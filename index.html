@@ -180,11 +180,16 @@ button{cursor:pointer;}
 .chip-clear{display:flex;align-items:center;gap:5px;padding:8px 12px;border-radius:8px;border:1px dashed var(--border-strong);font-size:12.5px;color:var(--text-secondary);background:none;}
 .chip-clear:hover{color:var(--danger-700);border-color:var(--danger-500);}
 .results-count{font-size:12.5px;color:var(--text-secondary);margin-bottom:10px;}
-.last-filter{display:inline-flex;align-items:center;gap:8px;background:var(--gold-50);border:1px solid var(--gold-100);color:var(--gold-600);padding:8px 14px;border-radius:8px;font-size:13px;margin-bottom:12px;}
-.last-filter .lf-label{color:var(--gold-600);opacity:.75;font-weight:400;}
-.last-filter .lf-value{font-weight:500;}
-.last-filter .lf-clear{margin-left:4px;background:none;border:none;color:var(--gold-600);opacity:.7;font-size:13px;line-height:1;padding:2px;}
-.last-filter .lf-clear:hover{opacity:1;}
+.active-filters-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-alt);border:1px solid var(--border-strong);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:12.5px;}
+.filter-chip .fc-label{opacity:.8;font-weight:400;}
+.filter-chip .fc-value{font-weight:500;color:var(--text-primary);}
+.filter-chip .fc-clear{background:none;border:none;color:inherit;opacity:.55;font-size:11px;line-height:1;padding:2px;margin-left:2px;}
+.filter-chip .fc-clear:hover{opacity:1;}
+.filter-chip-last{background:var(--gold-50);border-color:var(--gold-400);color:var(--gold-600);}
+.filter-chip-last .fc-label{color:var(--gold-600);opacity:.8;}
+.filter-chip-last .fc-value{font-weight:700;color:var(--gold-600);}
+.filter-chip-last .fc-clear{color:var(--gold-600);}
 .results-count b{color:var(--text-primary);}
 
 /* ============ TABLE ============ */
@@ -224,7 +229,8 @@ tbody tr:last-child td{border-bottom:none;}
 .modal-header-text .sub{font-size:12.5px;color:var(--text-secondary);margin-top:3px;}
 .modal-close{margin-left:auto;flex:none;}
 .modal-body{padding:22px 26px;max-height:70vh;overflow-y:auto;}
-.modal-footer{display:flex;justify-content:flex-end;gap:10px;padding:16px 26px;border-top:1px solid var(--border);}
+.modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:16px 26px;border-top:1px solid var(--border);}
+.autosave-note{font-size:11.5px;color:var(--text-muted);display:flex;align-items:center;gap:5px;}
 .modal-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--border);}
 .modal-tab{padding:11px 4px;margin-right:20px;font-size:13px;color:var(--text-secondary);border-bottom:2px solid transparent;background:none;}
 .modal-tab.active{color:var(--navy-800);border-color:var(--gold-500);font-weight:500;}
@@ -238,6 +244,9 @@ tbody tr:last-child td{border-bottom:none;}
 }
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold-500);box-shadow:0 0 0 3px var(--gold-50);}
 .field textarea{resize:vertical;min-height:70px;}
+.check-inline{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
+.check-inline input{flex:none;}
+.field input:disabled{background:var(--surface-alt);color:var(--text-muted);cursor:not-allowed;}
 .field-static{padding:9px 0;color:var(--text-primary);font-size:13px;}
 .field-static .lbl{font-size:12px;color:var(--text-muted);display:block;margin-bottom:2px;}
 .section-title{font-size:12.5px;font-weight:500;color:var(--gold-600);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 12px;padding-top:14px;border-top:1px solid var(--border);}
@@ -772,6 +781,27 @@ function renderMselPanel(field, options, selected){
   html += '</div><div class="msel-foot"><button data-action="msel-clear" data-field="'+field+'">Limpar</button><button data-action="msel-close" data-field="'+field+'">Fechar</button></div></div>';
   return html;
 }
+function activeFilterChips(){
+  var chips = [];
+  FILTER_KEYS.forEach(function(key){
+    var set = UI.filters[key];
+    if(set && set.size>0){
+      chips.push({
+        field: key,
+        label: FIELD_LABELS[key] || key,
+        value: Array.from(set).join(', '),
+        isLast: !!(UI.lastFilterChange && UI.lastFilterChange.field===key)
+      });
+    }
+  });
+  if(UI.filters.quickFlag==='semContato'){
+    chips.push({
+      field: null, label:'Indicador', value:'Sem contato registrado',
+      isLast: !!(UI.lastFilterChange && !UI.lastFilterChange.field && UI.lastFilterChange.value==='Sem contato registrado')
+    });
+  }
+  return chips;
+}
 function filterBarHtml(){
   var html = FILTER_DEFS.map(function(fd){ return renderMultiSelect(fd.key, fd.label); }).join('');
   html += renderMultiSelect('statusProcesso','Status do processo');
@@ -779,10 +809,14 @@ function filterBarHtml(){
   var n = countActiveFilters();
   if(n>0) html += '<button class="chip-clear" data-action="clear-filters"><span>&#10005;</span> Limpar filtros ('+n+')</button>';
   var out = '<div class="filter-bar">'+html+'</div>';
-  if(UI.lastFilterChange){
-    out += '<div class="last-filter"><span class="lf-label">'+esc(UI.lastFilterChange.label)+':</span><span class="lf-value">'+esc(UI.lastFilterChange.value)+'</span>'+
-      (UI.lastFilterChange.field ? '<button class="lf-clear" data-action="clear-last-filter" aria-label="Remover este filtro">&#10005;</button>' : '')+
-      '</div>';
+  var chips = activeFilterChips();
+  if(chips.length){
+    out += '<div class="active-filters-row">'+chips.map(function(c){
+      return '<div class="filter-chip'+(c.isLast?' filter-chip-last':'')+'">'+
+        '<span class="fc-label">'+esc(c.label)+':</span><span class="fc-value">'+esc(c.value)+'</span>'+
+        (c.field ? '<button class="fc-clear" data-action="clear-filter-dim" data-field="'+c.field+'" aria-label="Remover filtro de '+esc(c.label)+'">&#10005;</button>' : '')+
+        '</div>';
+    }).join('')+'</div>';
   }
   return out;
 }
@@ -949,7 +983,11 @@ function bulkSetStatus(value){
 }
 /* ============ FICHA MODAL ============ */
 function openFicha(id){ UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal(); }
-function closeModal(){ UI.currentRecordId = null; byId('modal-root').innerHTML=''; }
+function closeModal(){
+  if(UI.currentRecordId) flushAutosave(UI.currentRecordId);
+  UI.currentRecordId = null;
+  byId('modal-root').innerHTML='';
+}
 function renderModal(){
   var root = byId('modal-root');
   if(!UI.currentRecordId){ root.innerHTML=''; return; }
@@ -958,9 +996,9 @@ function renderModal(){
   var cadCount = RECORDS.filter(function(x){ return x.cadastro===r.cadastro; }).length;
   var footer = UI.modalTab==='dados'
     ? '<button class="btn btn-danger" data-action="delete-ficha" data-id="'+esc(r.id)+'" style="margin-right:auto">Remover registro</button>'+
-      '<button class="btn" data-action="close-modal">Cancelar</button>'+
-      '<button class="btn btn-primary" data-action="save-ficha" data-id="'+esc(r.id)+'">Salvar alterações</button>'
-    : '<button class="btn" data-action="close-modal">Fechar</button>';
+      '<span class="autosave-note">As alterações são salvas automaticamente</span>'+
+      '<button class="btn btn-primary" data-action="close-modal">Fechar</button>'
+    : '<button class="btn btn-primary" data-action="close-modal">Fechar</button>';
   root.innerHTML =
     '<div class="modal-overlay" data-action="close-modal-bg">'+
       '<div class="modal" data-action="stop-prop">'+
@@ -978,6 +1016,10 @@ function staticField(label, value){
   var v = (value===undefined||value===null||value==='') ? '—' : value;
   return '<div class="field-static"><span class="lbl">'+esc(label)+'</span>'+esc(v)+'</div>';
 }
+function responsavelDatalistHtml(){
+  var opts = uniqueOptions('responsavel');
+  return '<datalist id="responsavel-suggestions">'+opts.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist>';
+}
 function renderFichaDados(r, cadCount){
   var alerts = '';
   if(needsAdminClosure(r)) alerts += '<div class="alert alert-warning"><span class="ic">&#9888;</span><div>Situação funcional "'+esc(r.situacao)+'" — este caso normalmente requer <b>baixa administrativa</b> em vez de regularização de lotação. Confirme com a equipe antes de definir uma medida.</div></div>';
@@ -993,21 +1035,22 @@ function renderFichaDados(r, cadCount){
   html += '</div>';
 
   html += '<div class="section-title">Contato e formação</div><div class="field-grid">'+
-    '<div class="field"><label>Telefone</label><input type="tel" id="f-telefone" value="'+esc(r.telefone)+'" placeholder="(00) 00000-0000"></div>'+
-    '<div class="field"><label>E-mail</label><input type="email" id="f-email" value="'+esc(r.email)+'" placeholder="nome@educacao.ba.gov.br"></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Formação</label><input type="text" id="f-formacao" value="'+esc(r.formacao)+'" placeholder="Ex: Licenciatura em Letras"></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label><input type="text" id="f-lotacaoInformada" value="'+esc(r.lotacaoInformada)+'" placeholder="Onde o servidor afirma estar atuando"></div>'+
+    '<div class="field"><label>Telefone</label><input type="tel" id="f-telefone" data-action="autosave-text" data-field="telefone" value="'+esc(r.telefone)+'" placeholder="(00) 00000-0000" '+(r.semTelefoneSap?'disabled':'')+'>'+
+    '<label class="check-inline"><input type="checkbox" id="f-semTelefoneSap" data-action="toggle-sem-telefone" '+(r.semTelefoneSap?'checked':'')+'> Não consta telefone no SAP</label></div>'+
+    '<div class="field"><label>E-mail</label><input type="email" id="f-email" data-action="autosave-text" data-field="email" value="'+esc(r.email)+'" placeholder="nome@educacao.ba.gov.br"></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Formação</label><input type="text" id="f-formacao" data-action="autosave-text" data-field="formacao" value="'+esc(r.formacao)+'" placeholder="Ex: Licenciatura em Letras"></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label><input type="text" id="f-lotacaoInformada" data-action="autosave-text" data-field="lotacaoInformada" value="'+esc(r.lotacaoInformada)+'" placeholder="Onde o servidor afirma estar atuando"></div>'+
     '</div>';
 
   html += '<div class="section-title">Regularização</div><div class="field-grid">'+
-    '<div class="field"><label>Medida a ser tomada</label><select id="f-medidaTomada"><option value="">Não definida</option>'+
+    '<div class="field"><label>Medida a ser tomada</label><select id="f-medidaTomada" data-action="autosave-select" data-field="medidaTomada"><option value="">Não definida</option>'+
     MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'" '+(r.medidaTomada===m?'selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field"><label>Status do processo</label><select id="f-statusProcesso">'+
+    '<div class="field"><label>Status do processo</label><select id="f-statusProcesso" data-action="autosave-select" data-field="statusProcesso">'+
     STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'" '+(r.statusProcesso===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field"><label>Responsável pelo caso</label><input type="text" id="f-responsavel" value="'+esc(r.responsavel)+'" placeholder="Nome do técnico responsável"></div>'+
-    '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" value="'+esc(r.dataUltimoContato)+'"></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
-    '</div>';
+    '<div class="field"><label>Responsável pelo caso</label><input type="text" id="f-responsavel" data-action="autosave-text" data-field="responsavel" list="responsavel-suggestions" value="'+esc(r.responsavel)+'" placeholder="Nome do técnico responsável"></div>'+
+    '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'"></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
+    '</div>'+responsavelDatalistHtml();
   return html;
 }
 function renderFichaHistorico(r){
@@ -1024,23 +1067,45 @@ function renderFichaHistorico(r){
     '<button class="btn btn-primary btn-sm" data-action="add-historico" data-id="'+esc(r.id)+'" style="align-self:flex-end">Adicionar</button></div>';
   return html;
 }
-function saveFicha(id){
+/* ============ AUTOSAVE DA FICHA ============
+   Campos de texto salvam de forma automática e "debounced" (pequena pausa após
+   parar de digitar); selects/checkbox/data salvam imediatamente na mudança.
+   Trocar de aba ou fechar o modal força o envio imediato do que estiver pendente,
+   para nunca perder o que foi digitado. */
+var autosaveTimers = {};
+function applyFieldSideEffects(r, field, oldVal, newVal){
+  if(field==='statusProcesso' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Status do processo alterado de "'+oldVal+'" para "'+newVal+'".'});
+  else if(field==='medidaTomada' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Medida a ser tomada definida como "'+(newVal||'não definida')+'".'});
+  else if(field==='semTelefoneSap' && oldVal!==newVal) r.historico.push({data:todayIso(), texto: newVal ? 'Marcado como sem telefone cadastrado no SAP.' : 'Desmarcado "sem telefone no SAP".'});
+}
+function commitAutosave(id, field, value){
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r) return;
-  var oldStatus = r.statusProcesso, oldMedida = r.medidaTomada;
-  r.telefone = byId('f-telefone').value.trim();
-  r.email = byId('f-email').value.trim();
-  r.formacao = byId('f-formacao').value.trim();
-  r.lotacaoInformada = byId('f-lotacaoInformada').value.trim();
-  r.medidaTomada = byId('f-medidaTomada').value;
-  r.statusProcesso = byId('f-statusProcesso').value;
-  r.responsavel = byId('f-responsavel').value.trim();
-  r.dataUltimoContato = byId('f-dataUltimoContato').value;
-  r.observacoes = byId('f-observacoes').value;
-  if(oldStatus !== r.statusProcesso) r.historico.push({data:todayIso(), texto:'Status do processo alterado de "'+oldStatus+'" para "'+r.statusProcesso+'".'});
-  if(oldMedida !== r.medidaTomada) r.historico.push({data:todayIso(), texto:'Medida a ser tomada definida como "'+(r.medidaTomada||'não definida')+'".'});
-  persist(); syncToFirestore(r); closeModal(); render();
-  toast('Ficha atualizada com sucesso.');
+  var oldVal = r[field];
+  if(oldVal===value) return;
+  r[field] = value;
+  applyFieldSideEffects(r, field, oldVal, value);
+  persist();
+  syncToFirestore(r);
+  if(UI.view==='profissionais' || UI.view==='dashboard' || UI.view==='relatorios') byId('nav-count-total').textContent = RECORDS.length;
+}
+function scheduleAutosave(id, field, value){
+  var key = id+'::'+field;
+  if(autosaveTimers[key]) clearTimeout(autosaveTimers[key].timeoutId);
+  autosaveTimers[key] = {
+    id:id, field:field, value:value,
+    timeoutId: setTimeout(function(){ commitAutosave(id, field, value); delete autosaveTimers[key]; }, 700)
+  };
+}
+function flushAutosave(id){
+  Object.keys(autosaveTimers).forEach(function(key){
+    var t = autosaveTimers[key];
+    if(t.id===id){
+      clearTimeout(t.timeoutId);
+      commitAutosave(t.id, t.field, t.value);
+      delete autosaveTimers[key];
+    }
+  });
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1090,11 +1155,12 @@ function openNovoModal(){
           '<div class="section-title">Regularização</div><div class="field-grid">'+
           '<div class="field"><label>Medida a ser tomada</label><select id="nf-medidaTomada"><option value="">Não definida</option>'+
           MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('')+'</select></div>'+
-          '<div class="field"><label>Responsável</label><input type="text" id="nf-responsavel"></div>'+
+          '<div class="field"><label>Responsável</label><input type="text" id="nf-responsavel" list="responsavel-suggestions"></div>'+
           '</div>'+
         '</div>'+
         '<div class="modal-footer"><button class="btn" data-action="close-modal">Cancelar</button>'+
         '<button class="btn btn-primary" data-action="save-novo">Criar registro</button></div>'+
+        responsavelDatalistHtml()+
       '</div></div>';
 }
 function saveNovoRegistro(){
@@ -1108,7 +1174,7 @@ function saveNovoRegistro(){
     codsecul:'', orgao: byId('nf-orgao').value.trim(), regime:'', tipoServidor: byId('nf-tipoServidor').value,
     situacao: byId('nf-situacao').value.trim() || 'EM ATIVIDADE', cargo: byId('nf-cargo').value.trim(),
     situacaoEspecial: byId('nf-situacaoEspecial').value.trim(), dataInicio:'', dataFim:'', qtd:'', statusOrigem:'Manual',
-    telefone: byId('nf-telefone').value.trim(), email: byId('nf-email').value.trim(),
+    telefone: byId('nf-telefone').value.trim(), email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
     medidaTomada: byId('nf-medidaTomada').value, statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
@@ -1309,7 +1375,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', email:'', formacao:'', lotacaoInformada:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -1402,15 +1468,16 @@ function handleDelegatedClick(e){
   else if(action==='msel-clear'){
     var clearedField = el.dataset.field;
     UI.filters[clearedField].clear();
-    if(UI.lastFilterChange && FIELD_LABELS[clearedField]===UI.lastFilterChange.label) UI.lastFilterChange = null;
+    if(UI.lastFilterChange && UI.lastFilterChange.field===clearedField) UI.lastFilterChange = null;
     UI.page=1; render();
   }
   else if(action==='msel-close'){ UI.openMsel=null; render(); }
   else if(action==='clear-filters'){ clearFilters(); render(); }
-  else if(action==='clear-last-filter'){
-    if(UI.lastFilterChange && UI.lastFilterChange.field){
-      UI.filters[UI.lastFilterChange.field].delete(UI.lastFilterChange.value);
-      UI.lastFilterChange = null;
+  else if(action==='clear-filter-dim'){
+    var dimField = el.dataset.field;
+    if(dimField && UI.filters[dimField]){
+      UI.filters[dimField].clear();
+      if(UI.lastFilterChange && UI.lastFilterChange.field===dimField) UI.lastFilterChange = null;
       UI.page = 1;
       render();
     }
@@ -1427,8 +1494,7 @@ function handleDelegatedClick(e){
   else if(action==='close-modal') closeModal();
   else if(action==='close-modal-bg') closeModal();
   else if(action==='stop-prop'){ /* absorve o clique, não fecha o modal */ }
-  else if(action==='modal-tab'){ UI.modalTab = el.dataset.tab; renderModal(); }
-  else if(action==='save-ficha') saveFicha(el.dataset.id);
+  else if(action==='modal-tab'){ if(UI.currentRecordId) flushAutosave(UI.currentRecordId); UI.modalTab = el.dataset.tab; renderModal(); }
   else if(action==='add-historico') addHistorico(el.dataset.id);
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
   else if(action==='save-novo') saveNovoRegistro();
@@ -1461,6 +1527,23 @@ function handleDelegatedChange(e){
       render(); return;
     }
     if(action==='select-all-page'){ toggleSelectAllPage(el.checked); return; }
+    if(action==='toggle-sem-telefone'){
+      var telInput = byId('f-telefone');
+      var newVal = el.checked;
+      if(telInput){
+        if(newVal){ telInput.value=''; telInput.disabled=true; }
+        else { telInput.disabled=false; telInput.focus(); }
+      }
+      if(UI.currentRecordId){
+        if(newVal) commitAutosave(UI.currentRecordId, 'telefone', '');
+        commitAutosave(UI.currentRecordId, 'semTelefoneSap', newVal);
+      }
+      return;
+    }
+    if(action==='autosave-select'){
+      if(UI.currentRecordId) commitAutosave(UI.currentRecordId, el.dataset.field, el.value);
+      return;
+    }
     if(action==='report-groupby'){ UI.reportGroupBy = el.value; render(); return; }
     if(action==='bulk-medida'){ bulkSetMedida(el.value); return; }
     if(action==='bulk-status'){ bulkSetStatus(el.value); return; }
@@ -1480,6 +1563,8 @@ function handleDelegatedInput(e){
       var input = document.querySelector('.msel-panel[data-field="'+f+'"] .msel-search input');
       if(input){ input.focus(); var len=input.value.length; input.setSelectionRange(len,len); }
     },0);
+  } else if(el.dataset.action==='autosave-text'){
+    if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, el.dataset.field, el.value.trim());
   }
 }
 
