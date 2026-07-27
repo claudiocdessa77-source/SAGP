@@ -1000,11 +1000,10 @@ function renderModal(){
       '<button class="btn btn-primary" data-action="close-modal">Fechar</button>'
     : '<button class="btn btn-primary" data-action="close-modal">Fechar</button>';
   root.innerHTML =
-    '<div class="modal-overlay" data-action="close-modal-bg">'+
+    '<div class="modal-overlay" data-action="noop">'+
       '<div class="modal" data-action="stop-prop">'+
         '<div class="modal-header"><div class="modal-header-text"><h2>'+esc(r.nome)+'</h2>'+
-          '<div class="sub tnum">Cadastro '+esc(r.cadastro)+' &middot; SAP '+esc(r.cadastroSap)+' &middot; '+esc(r.cargo)+'</div></div>'+
-          '<button class="icon-btn modal-close" data-action="close-modal" aria-label="Fechar">&#10005;</button></div>'+
+          '<div class="sub tnum">Cadastro '+esc(r.cadastro)+' &middot; SAP '+esc(r.cadastroSap)+' &middot; '+esc(r.cargo)+'</div></div></div>'+
         '<div class="modal-tabs">'+
           '<button class="modal-tab '+(UI.modalTab==='dados'?'active':'')+'" data-action="modal-tab" data-tab="dados">Dados e regularização</button>'+
           '<button class="modal-tab '+(UI.modalTab==='historico'?'active':'')+'" data-action="modal-tab" data-tab="historico">Histórico ('+r.historico.length+')</button></div>'+
