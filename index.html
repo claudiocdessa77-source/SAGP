@@ -245,6 +245,8 @@ tbody tr:last-child td{border-bottom:none;}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold-500);box-shadow:0 0 0 3px var(--gold-50);}
 .field textarea{resize:vertical;min-height:70px;}
 .check-inline{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
+.tel-group{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+@media (max-width:640px){.tel-group{grid-template-columns:1fr;}}
 .check-inline input{flex:none;}
 .field input:disabled{background:var(--surface-alt);color:var(--text-muted);cursor:not-allowed;}
 .field-static{padding:9px 0;color:var(--text-primary);font-size:13px;}
@@ -552,6 +554,8 @@ var UI = {
   selected: new Set(),
   reportGroupBy: 'nre',
   lastImportResult: null,
+  lastContactImportResult: null,
+  lastFormacaoImportResult: null,
   lastFilterChange: null
 };
 
@@ -589,6 +593,43 @@ function byId(id){ return document.getElementById(id); }
 function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtDate(iso){ if(!iso) return '—'; var p = String(iso).split('-'); if(p.length<3) return iso; return p[2]+'/'+p[1]+'/'+p[0]; }
 function todayIso(){ return new Date().toISOString().slice(0,10); }
+var EMAIL_DOMAINS = ['@gmail.com','@hotmail.com','@enova.educacao.ba.gov.br','@yahoo.com.br'];
+function formatPhoneBR(value){
+  var d = String(value||'').replace(/\D/g,'').slice(0,11);
+  var len = d.length;
+  if(len===0) return '';
+  if(len<=2) return '('+d;
+  if(len<=6) return '('+d.slice(0,2)+') '+d.slice(2);
+  if(len<=10) return '('+d.slice(0,2)+') '+d.slice(2,6)+'-'+d.slice(6);
+  return '('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);
+}
+function applyPhoneFormatting(input){
+  var raw = input.value;
+  var cursorPos = input.selectionStart===null ? raw.length : input.selectionStart;
+  var digitsBeforeCursor = raw.slice(0,cursorPos).replace(/\D/g,'').length;
+  var formatted = formatPhoneBR(raw);
+  input.value = formatted;
+  if(digitsBeforeCursor===0){ input.setSelectionRange(formatted.length?1:0, formatted.length?1:0); return; }
+  var count=0, newPos=formatted.length;
+  for(var i=0;i<formatted.length;i++){
+    if(/\d/.test(formatted[i])) count++;
+    if(count===digitsBeforeCursor){ newPos=i+1; break; }
+  }
+  input.setSelectionRange(newPos,newPos);
+}
+function updateEmailSuggestions(inputEl){
+  var datalist = byId('email-suggestions');
+  if(!datalist) return;
+  var val = inputEl.value;
+  if(val && val.indexOf('@')===-1){
+    datalist.innerHTML = EMAIL_DOMAINS.map(function(d){ return '<option value="'+esc(val+d)+'">'; }).join('');
+  } else {
+    datalist.innerHTML = '';
+  }
+}
+function phonesDisplay(r){
+  return [r.telefone, r.telefone2, r.telefone3].filter(function(t){ return t && String(t).trim(); }).join(' / ');
+}
 function uid(prefix){ return prefix+'_'+Math.random().toString(36).slice(2,9)+Date.now().toString(36); }
 function debounce(fn, ms){ var t; return function(){ var a=arguments, ctx=this; clearTimeout(t); t=setTimeout(function(){ fn.apply(ctx,a); }, ms); }; }
 function pct(n,total){ return total ? Math.round((n/total)*100) : 0; }
@@ -616,7 +657,7 @@ function toast(msg, isError){
 /* ============ DERIVED HELPERS ============ */
 function isIrregular(r){ return r.statusProcesso !== 'Regularizado'; }
 function needsAdminClosure(r){ return r.situacao === 'FALECIDO' || r.situacao === 'APOSENTADO'; }
-function hasContact(r){ return !!(r.telefone && String(r.telefone).trim()) || !!(r.email && String(r.email).trim()); }
+function hasContact(r){ return !!(r.telefone && String(r.telefone).trim()) || !!(r.telefone2 && String(r.telefone2).trim()) || !!(r.telefone3 && String(r.telefone3).trim()) || !!(r.email && String(r.email).trim()); }
 function buildCadastroCountMap(){ var m = new Map(); RECORDS.forEach(function(r){ m.set(r.cadastro, (m.get(r.cadastro)||0)+1); }); return m; }
 function uniqueOptions(field){
   var set = new Set();
@@ -723,7 +764,7 @@ var VIEW_TITLES = {
   importar: ['Importar / Exportar','Atualize a base a partir de nova extração ou exporte para Excel']
 };
 function navigate(view){
-  if(UI.view==='importar' && view!=='importar') UI.lastImportResult=null;
+  if(UI.view==='importar' && view!=='importar'){ UI.lastImportResult=null; UI.lastContactImportResult=null; UI.lastFormacaoImportResult=null; }
   UI.view = view;
   UI.openMsel = null;
   document.querySelectorAll('.nav-item[data-view]').forEach(function(b){ b.classList.toggle('active', b.dataset.view===view); });
@@ -1034,10 +1075,16 @@ function renderFichaDados(r, cadCount){
   html += '</div>';
 
   html += '<div class="section-title">Contato e formação</div><div class="field-grid">'+
-    '<div class="field"><label>Telefone</label><input type="tel" id="f-telefone" data-action="autosave-text" data-field="telefone" value="'+esc(r.telefone)+'" placeholder="(00) 00000-0000" '+(r.semTelefoneSap?'disabled':'')+'>'+
+    '<div class="field" style="grid-column:1/-1">'+
+    '<label>Telefone(s)</label>'+
+    '<div class="tel-group">'+
+    '<input type="tel" id="f-telefone" data-action="autosave-phone" data-field="telefone" value="'+esc(r.telefone)+'" placeholder="(00) 00000-0000" maxlength="15" '+(r.semTelefoneSap?'disabled':'')+'>'+
+    '<input type="tel" id="f-telefone2" data-action="autosave-phone" data-field="telefone2" value="'+esc(r.telefone2)+'" placeholder="(00) 00000-0000" maxlength="15" '+(r.semTelefoneSap?'disabled':'')+'>'+
+    '<input type="tel" id="f-telefone3" data-action="autosave-phone" data-field="telefone3" value="'+esc(r.telefone3)+'" placeholder="(00) 00000-0000" maxlength="15" '+(r.semTelefoneSap?'disabled':'')+'>'+
+    '</div>'+
     '<label class="check-inline"><input type="checkbox" id="f-semTelefoneSap" data-action="toggle-sem-telefone" '+(r.semTelefoneSap?'checked':'')+'> Não consta telefone no SAP</label></div>'+
-    '<div class="field"><label>E-mail</label><input type="email" id="f-email" data-action="autosave-text" data-field="email" value="'+esc(r.email)+'" placeholder="nome@educacao.ba.gov.br"></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Formação</label><input type="text" id="f-formacao" data-action="autosave-text" data-field="formacao" value="'+esc(r.formacao)+'" placeholder="Ex: Licenciatura em Letras"></div>'+
+    '<div class="field"><label>E-mail</label><input type="email" id="f-email" data-action="autosave-text" data-field="email" list="email-suggestions" value="'+esc(r.email)+'" placeholder="nome@educacao.ba.gov.br"><datalist id="email-suggestions"></datalist></div>'+
+    '<div class="field"><label>Formação</label><input type="text" id="f-formacao" data-action="autosave-text" data-field="formacao" value="'+esc(r.formacao)+'" placeholder="Ex: Licenciatura em Letras"></div>'+
     '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label><input type="text" id="f-lotacaoInformada" data-action="autosave-text" data-field="lotacaoInformada" value="'+esc(r.lotacaoInformada)+'" placeholder="Onde o servidor afirma estar atuando"></div>'+
     '</div>';
 
@@ -1146,8 +1193,12 @@ function openNovoModal(){
           '<div class="field"><label>Situação especial</label><input type="text" id="nf-situacaoEspecial" placeholder="Ex: SEM CARGA HORÁRIA NA UEE"></div>'+
           '</div>'+
           '<div class="section-title">Contato e formação</div><div class="field-grid">'+
-          '<div class="field"><label>Telefone</label><input type="tel" id="nf-telefone"></div>'+
-          '<div class="field"><label>E-mail</label><input type="email" id="nf-email"></div>'+
+          '<div class="field" style="grid-column:1/-1"><label>Telefone(s)</label><div class="tel-group">'+
+          '<input type="tel" id="nf-telefone" data-action="autosave-phone" data-field="telefone" placeholder="(00) 00000-0000" maxlength="15">'+
+          '<input type="tel" id="nf-telefone2" data-action="autosave-phone" data-field="telefone2" placeholder="(00) 00000-0000" maxlength="15">'+
+          '<input type="tel" id="nf-telefone3" data-action="autosave-phone" data-field="telefone3" placeholder="(00) 00000-0000" maxlength="15">'+
+          '</div></div>'+
+          '<div class="field"><label>E-mail</label><input type="email" id="nf-email" data-action="autosave-text" list="email-suggestions"><datalist id="email-suggestions"></datalist></div>'+
           '<div class="field" style="grid-column:1/-1"><label>Formação</label><input type="text" id="nf-formacao"></div>'+
           '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label><input type="text" id="nf-lotacaoInformada"></div>'+
           '</div>'+
@@ -1173,7 +1224,8 @@ function saveNovoRegistro(){
     codsecul:'', orgao: byId('nf-orgao').value.trim(), regime:'', tipoServidor: byId('nf-tipoServidor').value,
     situacao: byId('nf-situacao').value.trim() || 'EM ATIVIDADE', cargo: byId('nf-cargo').value.trim(),
     situacaoEspecial: byId('nf-situacaoEspecial').value.trim(), dataInicio:'', dataFim:'', qtd:'', statusOrigem:'Manual',
-    telefone: byId('nf-telefone').value.trim(), email: byId('nf-email').value.trim(), semTelefoneSap:false,
+    telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
+    email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
     medidaTomada: byId('nf-medidaTomada').value, statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
@@ -1201,7 +1253,7 @@ function renderReportFlatTable(list){
   list.forEach(function(r){
     html += '<tr><td><div class="row-name">'+esc(r.nome)+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
       '<td>'+esc(shortNre(r.nre))+'</td><td>'+esc(r.municipio)+'</td><td>'+esc(r.orgao)+'</td><td>'+esc(r.cargo)+'</td>'+
-      '<td>'+esc(r.situacaoEspecial)+'</td><td>'+(esc(r.telefone)||'—')+'</td><td>'+(esc(r.email)||'—')+'</td>'+
+      '<td>'+esc(r.situacaoEspecial)+'</td><td>'+(esc(phonesDisplay(r))||'—')+'</td><td>'+(esc(r.email)||'—')+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td><td>'+medidaBadge(r.medidaTomada)+'</td><td>'+(esc(r.responsavel)||'—')+'</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -1264,7 +1316,8 @@ function exportReportExcel(){
       'Nome': r.nome, 'Cadastro': r.cadastro, 'Cadastro SAP': r.cadastroSap, 'NTE': r.nre, 'Município': r.municipio,
       'Órgão/Lotação oficial': r.orgao, 'Regime': r.regime, 'Tipo servidor': r.tipoServidor, 'Cargo': r.cargo,
       'Situação': r.situacao, 'Situação especial': r.situacaoEspecial, 'Data início': r.dataInicio, 'Data fim': r.dataFim,
-      'Telefone': r.telefone, 'E-mail': r.email, 'Formação': r.formacao, 'Lotação informada pelo servidor': r.lotacaoInformada,
+      'Telefone 1': r.telefone, 'Telefone 2': r.telefone2, 'Telefone 3': r.telefone3, 'Sem telefone no SAP': r.semTelefoneSap?'Sim':'Não',
+      'E-mail': r.email, 'Formação': r.formacao, 'Lotação informada pelo servidor': r.lotacaoInformada,
       'Medida a ser tomada': r.medidaTomada, 'Status do processo': r.statusProcesso, 'Responsável': r.responsavel,
       'Data último contato': r.dataUltimoContato, 'Observações': r.observacoes
     };
@@ -1309,6 +1362,35 @@ function renderImportar(){
     '<div class="si"><div class="si-val">'+RECORDS.filter(function(r){return r.statusOrigem==='Manual';}).length+'</div><div class="si-lbl">Cadastrados manualmente</div></div>'+
     '<div class="si"><div class="si-val">'+RECORDS.filter(hasContact).length+'</div><div class="si-lbl">Com contato registrado</div></div>'+
     '</div></div>';
+  html += '</div>';
+
+  html += '<div class="card" style="margin-top:16px"><div class="card-title">Atualizar telefone e e-mail por matrícula</div>'+
+    '<div class="card-sub">Aceita planilha com colunas MATRÍCULA, Nome completo, TELEFONE, E-mail (uma linha por telefone/e-mail, como o BANCOCARGA). Localiza os profissionais pela matrícula e preenche os campos de contato que ainda estiverem vazios — nunca sobrescreve telefone ou e-mail já preenchidos manualmente. Se houver mais de um telefone para a mesma matrícula, preenche Telefone 1, 2 e 3 na ordem em que aparecem na planilha.</div>'+
+    '<div class="dropzone" id="dropzone-contatos"><span class="ic">&#8593;</span><h3>Arraste a planilha de contatos aqui</h3>'+
+    '<p>ou <label for="contact-file-input" style="color:var(--gold-600);cursor:pointer;text-decoration:underline">selecione um arquivo</label> .xlsx</p>'+
+    '<input type="file" id="contact-file-input" accept=".xlsx,.xls" style="display:none"></div>';
+  if(UI.lastContactImportResult){
+    var cres = UI.lastContactImportResult;
+    html += '<div class="alert alert-info" style="margin-top:14px"><span class="ic">&#10003;</span><div>'+
+      '<b>'+cres.recordsUpdated+'</b> registro(s) receberam telefone e/ou e-mail novo (referentes a <b>'+cres.matriculasMatched+'</b> matrícula(s)) &middot; '+
+      '<b>'+cres.matriculasNotFound+'</b> matrícula(s) da planilha não encontradas na base &middot; '+cres.totalRowsRead+' linha(s) lidas.'+
+      '</div></div>';
+  }
+  html += '</div>';
+
+  html += '<div class="card" style="margin-top:16px"><div class="card-title">Atualizar formação por matrícula</div>'+
+    '<div class="card-sub">Aceita planilha com colunas Nº pessoal, Nome completo, Texto de formação (uma linha por profissional). Localiza pela matrícula e preenche o campo Formação apenas de quem ainda estiver vazio — nunca sobrescreve formação já preenchida manualmente.</div>'+
+    '<div class="dropzone" id="dropzone-formacao"><span class="ic">&#8593;</span><h3>Arraste a planilha de formação aqui</h3>'+
+    '<p>ou <label for="formacao-file-input" style="color:var(--gold-600);cursor:pointer;text-decoration:underline">selecione um arquivo</label> .xlsx</p>'+
+    '<input type="file" id="formacao-file-input" accept=".xlsx,.xls" style="display:none"></div>';
+  if(UI.lastFormacaoImportResult){
+    var fres = UI.lastFormacaoImportResult;
+    html += '<div class="alert alert-info" style="margin-top:14px"><span class="ic">&#10003;</span><div>'+
+      '<b>'+fres.recordsUpdated+'</b> registro(s) receberam formação nova &middot; '+
+      '<b>'+fres.matriculasNotFound+'</b> matrícula(s) da planilha não encontradas na base &middot; '+
+      '<b>'+fres.jaPreenchidos+'</b> já tinham formação preenchida (não alterados) &middot; '+fres.totalRowsRead+' linha(s) lidas.'+
+      '</div></div>';
+  }
   html += '</div>';
   html += '<div class="card" style="margin-top:16px;border-color:var(--danger-100)">'+
     '<div class="card-title" style="color:var(--danger-700)">Zona de risco</div>'+
@@ -1374,7 +1456,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -1387,6 +1469,128 @@ function mergeImportedRows(rows){
   syncToFirestore(touched);
   return {created:created, updated:updated, skipped:skipped, total:rows.length};
 }
+
+/* ============ IMPORTAÇÃO DE CONTATOS POR MATRÍCULA (telefone/e-mail) ============
+   Formato de origem: uma linha por telefone OU e-mail, repetindo a matrícula
+   (ex.: planilha BANCOCARGA). Agrupa por matrícula, preenche até 3 telefones
+   e o e-mail, mas NUNCA sobrescreve o que já estiver preenchido no SAGP. */
+var CONTACT_COLUMN_MAP = {MATRICULA:'matricula', NOMECOMPLETO:'nome', NOME:'nome', TELEFONE:'telefone', EMAIL:'email'};
+function handleContactImportFile(file){
+  if(typeof XLSX==='undefined'){ toast('Biblioteca de importação indisponível (sem conexão).', true); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      var result = mergeContactData(rows);
+      UI.lastContactImportResult = result;
+      render();
+      toast('Importação de contatos concluída.');
+    }catch(err){
+      console.error(err);
+      toast('Não foi possível ler a planilha de contatos. Verifique o formato.', true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+/* Algumas planilhas externas (SAP) trazem a matrícula com 8 dígitos, que corresponde
+   ao cadastroSap; o cadastro "cheio" às vezes tem um dígito verificador a mais (9 dígitos).
+   Por isso a busca por matrícula compara com os dois campos. */
+function findRecordsByMatricula(numId){
+  return RECORDS.filter(function(r){ return Number(r.cadastro)===numId || Number(r.cadastroSap)===numId; });
+}
+function mergeContactData(rows){
+  var groups = {};
+  var totalRowsRead = rows.length;
+  rows.forEach(function(row){
+    var mapped = {};
+    Object.keys(row).forEach(function(k){ var nk=normKey(k); if(CONTACT_COLUMN_MAP[nk]) mapped[CONTACT_COLUMN_MAP[nk]] = row[k]; });
+    var mat = parseIntSafe(mapped.matricula);
+    if(!mat) return;
+    if(!groups[mat]) groups[mat] = {phones:[], emails:[]};
+    if(mapped.telefone && String(mapped.telefone).trim()){
+      var fp = formatPhoneBR(mapped.telefone);
+      if(fp && groups[mat].phones.indexOf(fp)===-1) groups[mat].phones.push(fp);
+    }
+    if(mapped.email && String(mapped.email).trim()){
+      var em = String(mapped.email).trim().toLowerCase();
+      if(groups[mat].emails.indexOf(em)===-1) groups[mat].emails.push(em);
+    }
+  });
+
+  var recordsUpdated=0, matriculasMatched=0, matriculasNotFound=0, touched=[];
+  Object.keys(groups).forEach(function(matStr){
+    var mat = parseInt(matStr,10);
+    var g = groups[matStr];
+    var matchingRecords = findRecordsByMatricula(mat);
+    if(matchingRecords.length===0){ matriculasNotFound++; return; }
+    matriculasMatched++;
+    matchingRecords.forEach(function(r){
+      var changed = false;
+      var phoneIdx = 0;
+      ['telefone','telefone2','telefone3'].forEach(function(slot){
+        if(!r[slot] && phoneIdx < g.phones.length){ r[slot] = g.phones[phoneIdx]; phoneIdx++; changed = true; }
+      });
+      if(!r.email && g.emails.length){ r.email = g.emails[0]; changed = true; }
+      if(changed){
+        if(r.semTelefoneSap && phoneIdx>0) r.semTelefoneSap = false;
+        r.historico.push({data:todayIso(), texto:'Contato atualizado por importação de planilha (matrícula '+mat+').'});
+        touched.push(r);
+        recordsUpdated++;
+      }
+    });
+  });
+  persist();
+  syncToFirestore(touched);
+  return {recordsUpdated:recordsUpdated, matriculasMatched:matriculasMatched, matriculasNotFound:matriculasNotFound, totalRowsRead:totalRowsRead};
+}
+
+/* ============ IMPORTAÇÃO DE FORMAÇÃO POR MATRÍCULA ============
+   Formato de origem: uma linha por profissional (ex.: exportação com colunas
+   "Nº pessoal", "Nome completo", "Texto de formação"). Preenche o campo
+   Formação apenas quando estiver vazio no SAGP. */
+var FORMACAO_COLUMN_MAP = {NPESSOAL:'matricula', NOMECOMPLETO:'nome', TEXTODEFORMACAO:'formacao', FORMACAO:'formacao'};
+function handleFormacaoImportFile(file){
+  if(typeof XLSX==='undefined'){ toast('Biblioteca de importação indisponível (sem conexão).', true); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      var result = mergeFormacaoData(rows);
+      UI.lastFormacaoImportResult = result;
+      render();
+      toast('Importação de formação concluída.');
+    }catch(err){
+      console.error(err);
+      toast('Não foi possível ler a planilha de formação. Verifique o formato.', true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function mergeFormacaoData(rows){
+  var recordsUpdated=0, matriculasNotFound=0, jaPreenchidos=0, touched=[];
+  var totalRowsRead = rows.length;
+  rows.forEach(function(row){
+    var mapped = {};
+    Object.keys(row).forEach(function(k){ var nk=normKey(k); if(FORMACAO_COLUMN_MAP[nk]) mapped[FORMACAO_COLUMN_MAP[nk]] = row[k]; });
+    var mat = parseIntSafe(mapped.matricula);
+    var formacaoVal = mapped.formacao ? String(mapped.formacao).trim() : '';
+    if(!mat || !formacaoVal) return;
+    var matchingRecords = findRecordsByMatricula(mat);
+    if(matchingRecords.length===0){ matriculasNotFound++; return; }
+    matchingRecords.forEach(function(r){
+      if(r.formacao){ jaPreenchidos++; return; }
+      r.formacao = formacaoVal;
+      r.historico.push({data:todayIso(), texto:'Formação preenchida por importação de planilha (matrícula '+mat+'): "'+formacaoVal+'".'});
+      touched.push(r);
+      recordsUpdated++;
+    });
+  });
+  persist();
+  syncToFirestore(touched);
+  return {recordsUpdated:recordsUpdated, matriculasNotFound:matriculasNotFound, jaPreenchidos:jaPreenchidos, totalRowsRead:totalRowsRead};
+}
 function exportAllExcel(){
   if(typeof XLSX==='undefined'){ toast('Biblioteca indisponível (sem conexão).', true); return; }
   var rows = RECORDS.map(function(r){
@@ -1395,7 +1599,7 @@ function exportAllExcel(){
       'Órgão/Lotação oficial': r.orgao, 'Código SECUL': r.codsecul, 'Regime': r.regime, 'Tipo servidor': r.tipoServidor,
       'Cargo': r.cargo, 'Situação': r.situacao, 'Situação especial': r.situacaoEspecial,
       'Data início': r.dataInicio, 'Data fim': r.dataFim, 'QTD horas': r.qtd,
-      'Telefone': r.telefone, 'E-mail': r.email, 'Formação': r.formacao,
+      'Telefone 1': r.telefone, 'Telefone 2': r.telefone2, 'Telefone 3': r.telefone3, 'Sem telefone no SAP': r.semTelefoneSap?'Sim':'Não', 'E-mail': r.email, 'Formação': r.formacao,
       'Lotação informada pelo servidor': r.lotacaoInformada, 'Medida a ser tomada': r.medidaTomada,
       'Status do processo': r.statusProcesso, 'Responsável': r.responsavel,
       'Data último contato': r.dataUltimoContato, 'Observações': r.observacoes
@@ -1450,11 +1654,15 @@ function wireGlobalEvents(){
   document.addEventListener('click', handleDelegatedClick);
   document.addEventListener('change', handleDelegatedChange);
   document.addEventListener('input', handleDelegatedInput);
-  document.addEventListener('dragover', function(e){ var dz=e.target.closest && e.target.closest('#dropzone'); if(dz){ e.preventDefault(); dz.classList.add('drag'); } });
-  document.addEventListener('dragleave', function(e){ var dz=e.target.closest && e.target.closest('#dropzone'); if(dz) dz.classList.remove('drag'); });
+  document.addEventListener('dragover', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz){ e.preventDefault(); dz.classList.add('drag'); } });
+  document.addEventListener('dragleave', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz) dz.classList.remove('drag'); });
   document.addEventListener('drop', function(e){
-    var dz = e.target.closest && e.target.closest('#dropzone');
-    if(dz){ e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]); }
+    var dz = e.target.closest && e.target.closest('.dropzone');
+    if(dz){
+      e.preventDefault(); dz.classList.remove('drag');
+      var f = e.dataTransfer.files[0];
+      if(f){ if(dz.id==='dropzone-contatos') handleContactImportFile(f); else if(dz.id==='dropzone-formacao') handleFormacaoImportFile(f); else handleImportFile(f); }
+    }
   });
 }
 function handleDelegatedClick(e){
@@ -1527,14 +1735,18 @@ function handleDelegatedChange(e){
     }
     if(action==='select-all-page'){ toggleSelectAllPage(el.checked); return; }
     if(action==='toggle-sem-telefone'){
-      var telInput = byId('f-telefone');
       var newVal = el.checked;
-      if(telInput){
-        if(newVal){ telInput.value=''; telInput.disabled=true; }
-        else { telInput.disabled=false; telInput.focus(); }
-      }
+      ['f-telefone','f-telefone2','f-telefone3'].forEach(function(inputId){
+        var inp = byId(inputId);
+        if(inp){ if(newVal){ inp.value=''; inp.disabled=true; } else { inp.disabled=false; } }
+      });
+      if(!newVal){ var first = byId('f-telefone'); if(first) first.focus(); }
       if(UI.currentRecordId){
-        if(newVal) commitAutosave(UI.currentRecordId, 'telefone', '');
+        if(newVal){
+          commitAutosave(UI.currentRecordId, 'telefone', '');
+          commitAutosave(UI.currentRecordId, 'telefone2', '');
+          commitAutosave(UI.currentRecordId, 'telefone3', '');
+        }
         commitAutosave(UI.currentRecordId, 'semTelefoneSap', newVal);
       }
       return;
@@ -1548,6 +1760,8 @@ function handleDelegatedChange(e){
     if(action==='bulk-status'){ bulkSetStatus(el.value); return; }
   }
   if(e.target.id==='file-input'){ if(e.target.files[0]) handleImportFile(e.target.files[0]); e.target.value=''; return; }
+  if(e.target.id==='contact-file-input'){ if(e.target.files[0]) handleContactImportFile(e.target.files[0]); e.target.value=''; return; }
+  if(e.target.id==='formacao-file-input'){ if(e.target.files[0]) handleFormacaoImportFile(e.target.files[0]); e.target.value=''; return; }
   if(e.target.id==='backup-input'){ if(e.target.files[0]) handleBackupImport(e.target.files[0]); e.target.value=''; return; }
 }
 function handleDelegatedInput(e){
@@ -1563,7 +1777,11 @@ function handleDelegatedInput(e){
       if(input){ input.focus(); var len=input.value.length; input.setSelectionRange(len,len); }
     },0);
   } else if(el.dataset.action==='autosave-text'){
+    if(el.id==='f-email' || el.id==='nf-email') updateEmailSuggestions(el);
     if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, el.dataset.field, el.value.trim());
+  } else if(el.dataset.action==='autosave-phone'){
+    applyPhoneFormatting(el);
+    if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, el.dataset.field, el.value);
   }
 }
 
