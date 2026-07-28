@@ -352,7 +352,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.12</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.13</div>
     </div>
   </nav>
   <div class="main">
@@ -1779,7 +1779,9 @@ function mergeFormacaoData(rows){
 /* ============ IMPORTAÇÃO DE BLOQUEIO DE PAGAMENTO POR MATRÍCULA ============
    Formato de origem: uma linha por profissional, colunas cadastro / bloqueio / data do bloqueio.
    Só mexe em quem estiver marcado "BLOQUEADO" na planilha, e só preenche campos vazios no SAGP. */
-var BLOQUEIO_COLUMN_MAP = {CADASTRO:'matricula', MATRICULA:'matricula', BLOQUEIO:'bloqueio', DATADOBLOQUEIO:'dataBloqueio'};
+var BLOQUEIO_COLUMN_MAP = {CADASTRO:'matricula', MATRICULA:'matricula', NPESSOAL:'matricula',
+  BLOQUEIO:'bloqueio', BLOQUEIODEPAGAMENTO:'bloqueio', BLOQUEIOPAGAMENTO:'bloqueio', SITUACAO:'bloqueio', STATUS:'bloqueio',
+  DATADOBLOQUEIO:'dataBloqueio', DATABLOQUEIO:'dataBloqueio', DATA:'dataBloqueio'};
 function handleBloqueioImportFile(file){
   if(typeof XLSX==='undefined'){ toast('Biblioteca de importação indisponível (sem conexão).', true); return; }
   var reader = new FileReader();
