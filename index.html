@@ -200,7 +200,7 @@ table{width:100%;border-collapse:collapse;font-size:12.8px;}
 thead th{
   text-align:left;padding:11px 14px;background:var(--surface-alt);color:var(--text-secondary);
   font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border);
-  white-space:nowrap;position:sticky;top:var(--sticky-filter-h,0px);z-index:2;
+  white-space:nowrap;z-index:2;
 }
 thead th.sortable{cursor:pointer;user-select:none;}
 thead th.sortable:hover{color:var(--text-primary);}
@@ -349,7 +349,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#8593;</span><span>Importar / Exportar</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.9</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.10</div>
     </div>
   </nav>
   <div class="main">
@@ -588,7 +588,8 @@ var UI = {
   lastImportResult: null,
   lastContactImportResult: null,
   lastFormacaoImportResult: null,
-  lastFilterChange: null
+  lastFilterChange: null,
+  needsScrollReset: false
 };
 
 /* ============ INIT ============ */
@@ -759,6 +760,7 @@ function clearFilters(){
   var gs = byId('global-search'); if(gs) gs.value='';
   UI.page=1;
   UI.lastFilterChange = null;
+  UI.needsScrollReset = true;
 }
 function sortRecords(list){
   var field = UI.sortField, dir = UI.sortDir==='asc'?1:-1;
@@ -775,12 +777,14 @@ function sortRecords(list){
 function goFiltered(setup){
   if(setup) setup(UI.filters);
   UI.page = 1;
+  UI.needsScrollReset = true;
   navigate('profissionais');
 }
 function toggleQuickFlag(flag){
   if(UI.filters.quickFlags.has(flag)){ UI.filters.quickFlags.delete(flag); if(UI.lastFilterChange && UI.lastFilterChange.quickFlag===flag) UI.lastFilterChange=null; }
   else { UI.filters.quickFlags.add(flag); UI.lastFilterChange = {field:null, quickFlag:flag, label:'Indicador', value:QUICKFLAG_LABELS[flag]}; }
   UI.page = 1;
+  UI.needsScrollReset = true;
   render();
 }
 function drillKPI(type){
@@ -826,12 +830,7 @@ function render(){
   else if(UI.view==='profissionais') el.innerHTML = renderProfissionais();
   else if(UI.view==='relatorios') el.innerHTML = renderRelatorios();
   else if(UI.view==='importar') el.innerHTML = renderImportar();
-  adjustStickyOffsets();
-}
-function adjustStickyOffsets(){
-  var panel = byId('sticky-filters-panel');
-  var h = panel ? panel.offsetHeight : 0;
-  document.documentElement.style.setProperty('--sticky-filter-h', h+'px');
+  if(UI.needsScrollReset){ el.scrollTop = 0; UI.needsScrollReset = false; }
 }
 /* ============ SHARED UI PIECES ============ */
 function statusBadge(status){
@@ -1813,7 +1812,6 @@ function wireGlobalEvents(){
   document.addEventListener('change', handleDelegatedChange);
   document.addEventListener('input', handleDelegatedInput);
   document.addEventListener('paste', handleImagePaste);
-  window.addEventListener('resize', debounce(adjustStickyOffsets, 150));
   document.addEventListener('dragover', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz){ e.preventDefault(); dz.classList.add('drag'); } });
   document.addEventListener('dragleave', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz) dz.classList.remove('drag'); });
   document.addEventListener('drop', function(e){
@@ -1835,7 +1833,7 @@ function handleDelegatedClick(e){
     var clearedField = el.dataset.field;
     UI.filters[clearedField].clear();
     if(UI.lastFilterChange && UI.lastFilterChange.field===clearedField) UI.lastFilterChange = null;
-    UI.page=1; render();
+    UI.page=1; UI.needsScrollReset=true; render();
   }
   else if(action==='msel-close'){ UI.openMsel=null; render(); }
   else if(action==='clear-filters'){ clearFilters(); render(); }
@@ -1856,7 +1854,7 @@ function handleDelegatedClick(e){
     if(UI.sortField===fd) UI.sortDir = UI.sortDir==='asc'?'desc':'asc'; else { UI.sortField=fd; UI.sortDir='asc'; }
     render();
   }
-  else if(action==='page'){ var p=parseInt(el.dataset.page,10); if(!isNaN(p)){ UI.page=p; render(); } }
+  else if(action==='page'){ var p=parseInt(el.dataset.page,10); if(!isNaN(p)){ UI.page=p; UI.needsScrollReset=true; render(); } }
   else if(action==='open-ficha') openFicha(el.dataset.id);
   else if(action==='close-modal') closeModal();
   else if(action==='close-modal-bg') closeModal();
@@ -1896,7 +1894,7 @@ function handleDelegatedChange(e){
         UI.filters[f].delete(v);
         if(UI.lastFilterChange && UI.lastFilterChange.value===v && FIELD_LABELS[f]===UI.lastFilterChange.label) UI.lastFilterChange = null;
       }
-      UI.page=1; render(); return;
+      UI.page=1; UI.needsScrollReset=true; render(); return;
     }
     if(action==='select-row'){
       var id=el.dataset.id;
