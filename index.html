@@ -546,7 +546,7 @@ var StorageAdapter = (function(){
 var RECORDS = [];
 var UI = {
   view: 'dashboard',
-  filters: { search:'', quickFlag:null, nre:new Set(), municipio:new Set(), orgao:new Set(), tipoServidor:new Set(), cargo:new Set(), formacao:new Set(), situacao:new Set(), situacaoEspecial:new Set(), statusProcesso:new Set(), medidaTomada:new Set() },
+  filters: { search:'', quickFlags:new Set(), nre:new Set(), municipio:new Set(), orgao:new Set(), tipoServidor:new Set(), cargo:new Set(), formacao:new Set(), situacao:new Set(), situacaoEspecial:new Set(), statusProcesso:new Set(), medidaTomada:new Set() },
   sortField: 'nome', sortDir: 'asc',
   page: 1, pageSize: 50,
   openMsel: null, mselSearch: {},
@@ -675,7 +675,7 @@ function computeKPIs(list){
   var irregular = list.filter(isIrregular).length;
   var regularizado = total-irregular;
   var semMedida = list.filter(function(r){ return !r.medidaTomada; }).length;
-  var semContato = list.filter(function(r){ return isIrregular(r) && !hasContact(r); }).length;
+  var semContato = list.filter(function(r){ return !hasContact(r); }).length;
   var redaDeslig = list.filter(function(r){ return r.situacaoEspecial==='REDA DESLIGAMENTO'; }).length;
   var redaDesligPendente = list.filter(function(r){ return r.situacaoEspecial==='REDA DESLIGAMENTO' && isIrregular(r); }).length;
   var semFrequencia = list.filter(function(r){ return r.situacaoEspecial==='SEM FREQUÊNCIA NA UEE'; }).length;
@@ -689,9 +689,13 @@ function computeKPIsFor(list){
 
 /* ============ FILTERS ============ */
 var FILTER_KEYS = ['nre','municipio','orgao','tipoServidor','cargo','formacao','situacao','situacaoEspecial','statusProcesso','medidaTomada'];
+var QUICKFLAG_LABELS = {semEmail:'Sem e-mail', semTelefone:'Sem telefone', semFormacao:'Sem formação'};
+function isEmptyVal(v){ return !v || !String(v).trim(); }
 function matchesFilters(r){
   var f = UI.filters;
-  if(f.quickFlag==='semContato' && !(isIrregular(r) && !hasContact(r))) return false;
+  if(f.quickFlags.has('semEmail') && !isEmptyVal(r.email)) return false;
+  if(f.quickFlags.has('semTelefone') && !(isEmptyVal(r.telefone) && isEmptyVal(r.telefone2) && isEmptyVal(r.telefone3))) return false;
+  if(f.quickFlags.has('semFormacao') && !isEmptyVal(r.formacao)) return false;
   if(f.search){
     var s = f.search.toLowerCase();
     var hay = (r.nome+' '+r.cadastro+' '+r.cadastroSap).toLowerCase();
@@ -711,13 +715,14 @@ function getFiltered(){ return RECORDS.filter(matchesFilters); }
 function countActiveFilters(){
   var n=0; var f=UI.filters;
   FILTER_KEYS.forEach(function(k){ if(f[k].size>0) n++; });
+  n += f.quickFlags.size;
   if(f.search) n++;
   return n;
 }
 function clearFilters(){
   var f=UI.filters;
   FILTER_KEYS.forEach(function(k){ f[k].clear(); });
-  f.search=''; f.quickFlag=null;
+  f.search=''; f.quickFlags.clear();
   var gs = byId('global-search'); if(gs) gs.value='';
   UI.page=1;
   UI.lastFilterChange = null;
@@ -739,13 +744,18 @@ function goFiltered(setup){
   UI.page = 1;
   navigate('profissionais');
 }
+function toggleQuickFlag(flag){
+  if(UI.filters.quickFlags.has(flag)){ UI.filters.quickFlags.delete(flag); if(UI.lastFilterChange && UI.lastFilterChange.quickFlag===flag) UI.lastFilterChange=null; }
+  else { UI.filters.quickFlags.add(flag); UI.lastFilterChange = {field:null, quickFlag:flag, label:'Indicador', value:QUICKFLAG_LABELS[flag]}; }
+  UI.page = 1;
+  render();
+}
 function drillKPI(type){
   goFiltered(function(f){
-    f.quickFlag = (type==='semContato') ? 'semContato' : null;
     if(type==='irregular'){ f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Regularizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Em situação irregular'}; }
     else if(type==='regularizado'){ f.statusProcesso.clear(); f.statusProcesso.add('Regularizado'); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Regularizado'}; }
     else if(type==='semMedida'){ f.medidaTomada.clear(); f.medidaTomada.add('(Não definida)'); UI.lastFilterChange={field:'medidaTomada', label:'Medida', value:'Não definida'}; }
-    else if(type==='semContato'){ UI.lastFilterChange={field:null, label:'Indicador', value:'Sem contato registrado'}; }
+    else if(type==='semContato'){ f.quickFlags.add('semEmail'); f.quickFlags.add('semTelefone'); UI.lastFilterChange={field:null, label:'Indicador', value:'Sem e-mail e sem telefone'}; }
     else if(type==='redaDeslig'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('REDA DESLIGAMENTO'); UI.lastFilterChange={field:'situacaoEspecial', label:'Situação especial', value:'REDA DESLIGAMENTO'}; }
     else if(type==='redaDesligPendente'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('REDA DESLIGAMENTO'); f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Regularizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:null, label:'Indicador', value:'REDA desligamento pendente'}; }
     else if(type==='semFrequencia'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('SEM FREQUÊNCIA NA UEE'); UI.lastFilterChange={field:'situacaoEspecial', label:'Situação especial', value:'SEM FREQUÊNCIA NA UEE'}; }
@@ -753,7 +763,7 @@ function drillKPI(type){
   });
 }
 function drillField(field, value){
-  goFiltered(function(f){ f.quickFlag=null; f[field].clear(); f[field].add(value); UI.lastFilterChange = {field:field, label: FIELD_LABELS[field]||field, value: value}; });
+  goFiltered(function(f){ f[field].clear(); f[field].add(value); UI.lastFilterChange = {field:field, label: FIELD_LABELS[field]||field, value: value}; });
 }
 
 /* ============ NAV / RENDER ROUTER ============ */
@@ -828,34 +838,41 @@ function activeFilterChips(){
     var set = UI.filters[key];
     if(set && set.size>0){
       chips.push({
-        field: key,
+        field: key, quickFlag: null,
         label: FIELD_LABELS[key] || key,
         value: Array.from(set).join(', '),
         isLast: !!(UI.lastFilterChange && UI.lastFilterChange.field===key)
       });
     }
   });
-  if(UI.filters.quickFlag==='semContato'){
+  UI.filters.quickFlags.forEach(function(flag){
     chips.push({
-      field: null, label:'Indicador', value:'Sem contato registrado',
-      isLast: !!(UI.lastFilterChange && !UI.lastFilterChange.field && UI.lastFilterChange.value==='Sem contato registrado')
+      field: null, quickFlag: flag, label:'Indicador', value: QUICKFLAG_LABELS[flag] || flag,
+      isLast: !!(UI.lastFilterChange && UI.lastFilterChange.quickFlag===flag)
     });
-  }
+  });
   return chips;
+}
+function quickToggleBtn(flag){
+  var active = UI.filters.quickFlags.has(flag);
+  return '<button class="msel-btn '+(active?'has-val':'')+'" data-action="toggle-quickflag" data-flag="'+flag+'">'+esc(QUICKFLAG_LABELS[flag])+'</button>';
 }
 function filterBarHtml(){
   var html = FILTER_DEFS.map(function(fd){ return renderMultiSelect(fd.key, fd.label); }).join('');
   html += renderMultiSelect('statusProcesso','Status do processo');
   html += renderMultiSelect('medidaTomada','Medida');
+  html += quickToggleBtn('semEmail')+quickToggleBtn('semTelefone')+quickToggleBtn('semFormacao');
   var n = countActiveFilters();
   if(n>0) html += '<button class="chip-clear" data-action="clear-filters"><span>&#10005;</span> Limpar filtros ('+n+')</button>';
   var out = '<div class="filter-bar">'+html+'</div>';
   var chips = activeFilterChips();
   if(chips.length){
     out += '<div class="active-filters-row">'+chips.map(function(c){
+      var clearBtn = '';
+      if(c.field) clearBtn = '<button class="fc-clear" data-action="clear-filter-dim" data-field="'+c.field+'" aria-label="Remover filtro de '+esc(c.label)+'">&#10005;</button>';
+      else if(c.quickFlag) clearBtn = '<button class="fc-clear" data-action="toggle-quickflag" data-flag="'+c.quickFlag+'" aria-label="Remover filtro de '+esc(c.label)+'">&#10005;</button>';
       return '<div class="filter-chip'+(c.isLast?' filter-chip-last':'')+'">'+
-        '<span class="fc-label">'+esc(c.label)+':</span><span class="fc-value">'+esc(c.value)+'</span>'+
-        (c.field ? '<button class="fc-clear" data-action="clear-filter-dim" data-field="'+c.field+'" aria-label="Remover filtro de '+esc(c.label)+'">&#10005;</button>' : '')+
+        '<span class="fc-label">'+esc(c.label)+':</span><span class="fc-value">'+esc(c.value)+'</span>'+clearBtn+
         '</div>';
     }).join('')+'</div>';
   }
@@ -899,7 +916,7 @@ function renderDashboard(){
   html += kpiCard('irregular','Em situação irregular', k.irregular, 'red', pct(k.irregular,k.total)+'% do total — requer ação');
   html += kpiCard('regularizado','Regularizados', k.regularizado, 'green', pct(k.regularizado,k.total)+'% do total');
   html += kpiCard('semMedida','Sem medida definida', k.semMedida, 'amber', 'Aguardando decisão da equipe');
-  html += kpiCard('semContato','Sem contato registrado', k.semContato, 'amber', 'Casos irregulares sem telefone/e-mail');
+  html += kpiCard('semContato','Sem contato registrado', k.semContato, 'amber', 'Sem telefone e sem e-mail cadastrados');
   html += kpiCard('redaDesligPendente','REDA desligamento pendente', k.redaDesligPendente, 'red', 'de '+k.redaDeslig+' no total já sinalizados');
   html += kpiCard('semFrequencia','Sem frequência na UEE', k.semFrequencia, 'blue', 'Sem registro de frequência na unidade');
   html += kpiCard('baixaAdm','Requer baixa administrativa', k.baixaAdm, 'purple', 'Óbito ou aposentadoria pendente de baixa');
@@ -1028,6 +1045,7 @@ function closeModal(){
   if(UI.currentRecordId) flushAutosave(UI.currentRecordId);
   UI.currentRecordId = null;
   byId('modal-root').innerHTML='';
+  render();
 }
 function renderModal(){
   var root = byId('modal-root');
@@ -1689,6 +1707,7 @@ function handleDelegatedClick(e){
       render();
     }
   }
+  else if(action==='toggle-quickflag'){ toggleQuickFlag(el.dataset.flag); }
   else if(action==='drill-kpi') drillKPI(el.dataset.kpi);
   else if(action==='drill-field') drillField(el.dataset.field, el.dataset.value);
   else if(action==='sort'){
