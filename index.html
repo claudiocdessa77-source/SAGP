@@ -282,6 +282,12 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .empty-state h3{font-size:15px;color:var(--text-primary);font-weight:500;margin-bottom:6px;}
 
 .dropzone{border:2px dashed var(--border-strong);border-radius:14px;padding:44px 20px;text-align:center;background:var(--surface-alt);transition:border-color .15s,background .15s;}
+.paste-zone{border:2px dashed var(--border-strong);border-radius:10px;padding:22px 16px;text-align:center;background:var(--surface-alt);color:var(--text-secondary);font-size:12.8px;outline:none;cursor:text;transition:border-color .15s,background .15s;}
+.paste-zone:focus,.paste-zone.drag{border-color:var(--gold-500);background:var(--gold-50);}
+.paste-zone .ic{font-size:24px;display:block;margin-bottom:8px;color:var(--text-muted);}
+.paste-zone p{margin:2px 0;}
+.paste-zone-alt{font-size:11.5px;color:var(--text-muted);}
+.anexo-preview img{max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block;cursor:zoom-in;}
 .dropzone.drag{border-color:var(--gold-500);background:var(--gold-50);}
 .dropzone .ic{font-size:34px;color:var(--text-muted);margin-bottom:12px;display:block;}
 .dropzone h3{font-size:14.5px;font-weight:500;margin-bottom:5px;}
@@ -1122,6 +1128,21 @@ function renderFichaDados(r, cadCount){
     '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'"></div>'+
     '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
     '</div>'+responsavelDatalistHtml();
+
+  html += '<div class="section-title">Anexo (print de tela)</div>';
+  if(r.anexoImagem){
+    html += '<div class="anexo-preview">'+
+      '<a href="'+r.anexoImagem+'" target="_blank" title="Abrir em tamanho real"><img src="'+r.anexoImagem+'" alt="Print anexado"></a>'+
+      '<div style="margin-top:8px"><button class="btn btn-sm btn-danger" data-action="remove-anexo">Remover e colar outro</button></div>'+
+      '</div>';
+  } else {
+    html += '<div class="paste-zone" tabindex="0" data-paste-zone="1">'+
+      '<span class="ic">&#128247;</span>'+
+      '<p><b>Clique aqui e cole (Ctrl+V)</b> um print de tela ou uma cópia de células do Excel como imagem</p>'+
+      '<p class="paste-zone-alt">ou <label for="anexo-file-input" style="color:var(--gold-600);cursor:pointer;text-decoration:underline">selecione uma imagem</label></p>'+
+      '<input type="file" id="anexo-file-input" data-action="anexo-file" accept="image/*" style="display:none">'+
+      '</div>';
+  }
   return html;
 }
 function renderFichaHistorico(r){
@@ -1177,6 +1198,65 @@ function flushAutosave(id){
       delete autosaveTimers[key];
     }
   });
+}
+
+/* ============ ANEXO (colar print de tela / cópia do Excel como imagem) ============
+   Comprime a imagem colada (canvas -> JPEG) para caber com folga no limite de 1MB
+   por documento do Firestore, tentando qualidades progressivamente menores se preciso. */
+function compressImageToDataUrl(imgEl, maxWidth, quality){
+  var canvas = document.createElement('canvas');
+  var scale = Math.min(1, maxWidth/imgEl.width);
+  canvas.width = Math.max(1, Math.round(imgEl.width*scale));
+  canvas.height = Math.max(1, Math.round(imgEl.height*scale));
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+function saveAnexoFromImage(img){
+  var maxWidth = 1000, quality = 0.75, attempts = 0;
+  function tryOnce(){
+    attempts++;
+    var dataUrl = compressImageToDataUrl(img, maxWidth, quality);
+    var approxBytes = dataUrl.length*0.75;
+    if(approxBytes > 700000 && attempts < 6){
+      quality = Math.max(0.3, quality-0.15);
+      maxWidth = Math.max(400, maxWidth*0.85);
+      tryOnce();
+      return;
+    }
+    if(!UI.currentRecordId){ return; }
+    commitAutosave(UI.currentRecordId, 'anexoImagem', dataUrl);
+    renderModal();
+    toast('Print anexado à ficha.');
+  }
+  tryOnce();
+}
+function processImageFile(file){
+  if(!file || file.type.indexOf('image')!==0){ toast('Selecione ou cole uma imagem.', true); return; }
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var img = new Image();
+    img.onload = function(){ saveAnexoFromImage(img); };
+    img.onerror = function(){ toast('Não foi possível ler essa imagem.', true); };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function handleImagePaste(e){
+  var zone = document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-paste-zone]') : null;
+  if(!zone) return;
+  var cd = e.clipboardData || window.clipboardData;
+  if(!cd || !cd.items) return;
+  for(var i=0;i<cd.items.length;i++){
+    if(cd.items[i].type.indexOf('image')===0){
+      e.preventDefault();
+      processImageFile(cd.items[i].getAsFile());
+      return;
+    }
+  }
+  toast('Não encontrei uma imagem na área de transferência. Copie um print ou células do Excel como imagem.', true);
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1252,7 +1332,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', anexoImagem:'', statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1481,7 +1561,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', anexoImagem:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -1679,6 +1759,7 @@ function wireGlobalEvents(){
   document.addEventListener('click', handleDelegatedClick);
   document.addEventListener('change', handleDelegatedChange);
   document.addEventListener('input', handleDelegatedInput);
+  document.addEventListener('paste', handleImagePaste);
   document.addEventListener('dragover', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz){ e.preventDefault(); dz.classList.add('drag'); } });
   document.addEventListener('dragleave', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz) dz.classList.remove('drag'); });
   document.addEventListener('drop', function(e){
@@ -1730,6 +1811,9 @@ function handleDelegatedClick(e){
   else if(action==='modal-tab'){ if(UI.currentRecordId) flushAutosave(UI.currentRecordId); UI.modalTab = el.dataset.tab; renderModal(); }
   else if(action==='add-historico') addHistorico(el.dataset.id);
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
+  else if(action==='remove-anexo'){
+    if(UI.currentRecordId){ commitAutosave(UI.currentRecordId, 'anexoImagem', ''); renderModal(); toast('Print removido.'); }
+  }
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
@@ -1789,6 +1873,7 @@ function handleDelegatedChange(e){
   if(e.target.id==='contact-file-input'){ if(e.target.files[0]) handleContactImportFile(e.target.files[0]); e.target.value=''; return; }
   if(e.target.id==='formacao-file-input'){ if(e.target.files[0]) handleFormacaoImportFile(e.target.files[0]); e.target.value=''; return; }
   if(e.target.id==='backup-input'){ if(e.target.files[0]) handleBackupImport(e.target.files[0]); e.target.value=''; return; }
+  if(e.target.id==='anexo-file-input'){ if(e.target.files[0]) processImageFile(e.target.files[0]); e.target.value=''; return; }
 }
 function handleDelegatedInput(e){
   var el = e.target.closest && e.target.closest('[data-action]');
