@@ -211,6 +211,8 @@ tbody tr:last-child td{border-bottom:none;}
 .row-sub{font-size:11.3px;color:var(--text-muted);margin-top:1px;}
 .cell-check{width:36px;}
 .multi-flag{color:var(--warning-500);font-size:13px;margin-left:5px;}
+tbody tr.row-duplicate{background:var(--danger-100);}
+tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .table-empty{padding:60px 20px;text-align:center;color:var(--text-muted);}
 .table-empty .ic{font-size:32px;margin-bottom:10px;display:block;color:var(--border-strong);}
 .pagination{display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border);}
@@ -658,7 +660,7 @@ function toast(msg, isError){
 function isIrregular(r){ return r.statusProcesso !== 'Regularizado'; }
 function needsAdminClosure(r){ return r.situacao === 'FALECIDO' || r.situacao === 'APOSENTADO'; }
 function hasContact(r){ return !!(r.telefone && String(r.telefone).trim()) || !!(r.telefone2 && String(r.telefone2).trim()) || !!(r.telefone3 && String(r.telefone3).trim()) || !!(r.email && String(r.email).trim()); }
-function buildCadastroCountMap(){ var m = new Map(); RECORDS.forEach(function(r){ m.set(r.cadastro, (m.get(r.cadastro)||0)+1); }); return m; }
+function buildCadastroCountMap(){ var m = new Map(); RECORDS.forEach(function(r){ var k = (r.nome||'')+'|'+r.cadastro; m.set(k, (m.get(k)||0)+1); }); return m; }
 function uniqueOptions(field){
   var set = new Set();
   RECORDS.forEach(function(r){ var v = r[field]; if(field==='medidaTomada' && !v) v='(Não definida)'; if(v) set.add(v); });
@@ -981,8 +983,10 @@ function renderTable(items, cadMap){
     sortTh('formacao','Formação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
     sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th></tr></thead><tbody>';
   items.forEach(function(r){
-    var multi = cadMap.get(r.cadastro)>1 ? '<span class="multi-flag" title="Servidor possui mais de um registro no sistema">&#9888;</span>' : '';
-    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer">'+
+    var dupKey = (r.nome||'')+'|'+r.cadastro;
+    var isDup = cadMap.get(dupKey)>1;
+    var multi = isDup ? '<span class="multi-flag" title="Servidor possui mais de um registro no sistema (mesmo nome e matrícula)">&#9888;</span>' : '';
+    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isDup?'row-duplicate':'')+'">'+
       '<td class="cell-check"><input type="checkbox" data-action="select-row" data-id="'+esc(r.id)+'" '+(UI.selected.has(r.id)?'checked':'')+'></td>'+
       '<td><div class="row-name">'+esc(r.nome)+multi+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
       '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
