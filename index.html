@@ -345,7 +345,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#8593;</span><span>Importar / Exportar</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.1</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.2</div>
     </div>
   </nav>
   <div class="main">
@@ -378,6 +378,7 @@ var STORAGE_KEY = 'sagp_records_v1';
 var STATUS_PROCESSO = ['Pendente de Análise','Em Contato','Contato Realizado','Medida Definida','Em Execução','Regularizado'];
 var STATUS_COLOR = {'Pendente de Análise':'gray','Em Contato':'blue','Contato Realizado':'blue','Medida Definida':'amber','Em Execução':'amber','Regularizado':'green'};
 var MEDIDAS = ['Desligamento','Bloqueio','Remoção','Relotação'];
+var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado'];
 var MEDIDA_COLOR = {'Desligamento':'red','Bloqueio':'amber','Remoção':'purple','Relotação':'blue'};
 var FILTER_DEFS = [
   {key:'nre', label:'NTE'},
@@ -818,6 +819,11 @@ function medidaBadge(medida){
   var color = MEDIDA_COLOR[medida] || 'gray';
   return '<span class="badge b-'+color+'"><span class="badge-dot"></span>'+esc(medida)+'</span>';
 }
+function bloqueioBadge(v){
+  if(!v) return '—';
+  var color = v==='Bloqueado' ? 'red' : 'amber';
+  return '<span class="badge b-'+color+'"><span class="badge-dot"></span>'+esc(v)+'</span>';
+}
 function renderMultiSelect(field, label){
   var options = uniqueOptions(field);
   var selected = UI.filters[field];
@@ -1007,7 +1013,7 @@ function renderTable(items, cadMap){
       '<td>'+esc(r.cargo)+'</td>'+
       '<td>'+esc(r.situacaoEspecial)+'</td>'+
       '<td>'+(esc(r.formacao)||'—')+'</td>'+
-      '<td>'+(esc(r.bloqueioPagamento)||'—')+'</td>'+
+      '<td>'+bloqueioBadge(r.bloqueioPagamento)+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td>'+
       '<td>'+medidaBadge(r.medidaTomada)+'</td>'+
       '<td><button class="icon-btn" data-action="open-ficha" data-id="'+esc(r.id)+'" aria-label="Abrir ficha">&#8250;</button></td>'+
@@ -1128,6 +1134,9 @@ function renderFichaDados(r, cadCount){
   html += '<div class="section-title">Regularização</div><div class="field-grid">'+
     '<div class="field"><label>Medida a ser tomada</label><select id="f-medidaTomada" data-action="autosave-select" data-field="medidaTomada"><option value="">Não definida</option>'+
     MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'" '+(r.medidaTomada===m?'selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field"><label>Bloqueio de pagamento</label><select id="f-bloqueioPagamento" data-action="autosave-select" data-field="bloqueioPagamento"><option value="">Não definido</option>'+
+    BLOQUEIO_PAGTO_OPTS.map(function(b){ return '<option value="'+esc(b)+'" '+(r.bloqueioPagamento===b?'selected':'')+'>'+esc(b)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field"><label>Processo SEI</label><input type="text" id="f-processoSei" data-action="autosave-text" data-field="processoSei" value="'+esc(r.processoSei)+'" placeholder="Ex: 00000.000000/2026-00"></div>'+
     '<div class="field"><label>Status do processo</label><select id="f-statusProcesso" data-action="autosave-select" data-field="statusProcesso">'+
     STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'" '+(r.statusProcesso===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
     '<div class="field"><label>Responsável pelo caso</label><input type="text" id="f-responsavel" data-action="autosave-text" data-field="responsavel" list="responsavel-suggestions" value="'+esc(r.responsavel)+'" placeholder="Nome do técnico responsável"></div>'+
@@ -1175,6 +1184,7 @@ function applyFieldSideEffects(r, field, oldVal, newVal){
   if(field==='statusProcesso' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Status do processo alterado de "'+oldVal+'" para "'+newVal+'".'});
   else if(field==='medidaTomada' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Medida a ser tomada definida como "'+(newVal||'não definida')+'".'});
   else if(field==='semTelefoneSap' && oldVal!==newVal) r.historico.push({data:todayIso(), texto: newVal ? 'Marcado como sem telefone cadastrado no SAP.' : 'Desmarcado "sem telefone no SAP".'});
+  else if(field==='bloqueioPagamento' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Bloqueio de pagamento definido como "'+(newVal||'não definido')+'".'});
 }
 function commitAutosave(id, field, value){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1346,7 +1356,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', anexoImagem:'', statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', processoSei:'', anexoImagem:'', statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1437,7 +1447,7 @@ function exportReportExcel(){
       'Situação': r.situacao, 'Situação especial': r.situacaoEspecial, 'Data início': r.dataInicio, 'Data fim': r.dataFim,
       'Telefone 1': r.telefone, 'Telefone 2': r.telefone2, 'Telefone 3': r.telefone3, 'Sem telefone no SAP': r.semTelefoneSap?'Sim':'Não',
       'E-mail': r.email, 'Formação': r.formacao, 'Lotação informada pelo servidor': r.lotacaoInformada,
-      'Medida a ser tomada': r.medidaTomada, 'Status do processo': r.statusProcesso, 'Responsável': r.responsavel,
+      'Medida a ser tomada': r.medidaTomada, 'Bloqueio de pagamento': r.bloqueioPagamento, 'Processo SEI': r.processoSei, 'Status do processo': r.statusProcesso, 'Responsável': r.responsavel,
       'Data último contato': r.dataUltimoContato, 'Observações': r.observacoes
     };
   });
@@ -1575,7 +1585,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', anexoImagem:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', processoSei:'', anexoImagem:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -1720,6 +1730,7 @@ function exportAllExcel(){
       'Data início': r.dataInicio, 'Data fim': r.dataFim, 'QTD horas': r.qtd,
       'Telefone 1': r.telefone, 'Telefone 2': r.telefone2, 'Telefone 3': r.telefone3, 'Sem telefone no SAP': r.semTelefoneSap?'Sim':'Não', 'E-mail': r.email, 'Formação': r.formacao,
       'Lotação informada pelo servidor': r.lotacaoInformada, 'Medida a ser tomada': r.medidaTomada,
+      'Bloqueio de pagamento': r.bloqueioPagamento, 'Processo SEI': r.processoSei,
       'Status do processo': r.statusProcesso, 'Responsável': r.responsavel,
       'Data último contato': r.dataUltimoContato, 'Observações': r.observacoes
     };
