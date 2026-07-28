@@ -345,7 +345,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#8593;</span><span>Importar / Exportar</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.2</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.3</div>
     </div>
   </nav>
   <div class="main">
@@ -378,7 +378,7 @@ var STORAGE_KEY = 'sagp_records_v1';
 var STATUS_PROCESSO = ['Pendente de Análise','Em Contato','Contato Realizado','Medida Definida','Em Execução','Regularizado'];
 var STATUS_COLOR = {'Pendente de Análise':'gray','Em Contato':'blue','Contato Realizado':'blue','Medida Definida':'amber','Em Execução':'amber','Regularizado':'green'};
 var MEDIDAS = ['Desligamento','Bloqueio','Remoção','Relotação'];
-var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado'];
+var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
 var MEDIDA_COLOR = {'Desligamento':'red','Bloqueio':'amber','Remoção':'purple','Relotação':'blue'};
 var FILTER_DEFS = [
   {key:'nre', label:'NTE'},
@@ -821,7 +821,7 @@ function medidaBadge(medida){
 }
 function bloqueioBadge(v){
   if(!v) return '—';
-  var color = v==='Bloqueado' ? 'red' : 'amber';
+  var color = v==='Bloqueado' ? 'red' : (v==='Não bloqueado' ? 'green' : 'amber');
   return '<span class="badge b-'+color+'"><span class="badge-dot"></span>'+esc(v)+'</span>';
 }
 function renderMultiSelect(field, label){
