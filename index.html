@@ -345,7 +345,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#8593;</span><span>Importar / Exportar</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.3</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.7</div>
     </div>
   </nav>
   <div class="main">
@@ -375,10 +375,11 @@ const RAW_DATA = [{"id": "sagp_0001", "cadastro": 92181486, "cadastroSap": 92181
 <script>
 /* ============ CONSTANTS ============ */
 var STORAGE_KEY = 'sagp_records_v1';
-var STATUS_PROCESSO = ['Pendente de Análise','Em Contato','Contato Realizado','Medida Definida','Em Execução','Regularizado'];
-var STATUS_COLOR = {'Pendente de Análise':'gray','Em Contato':'blue','Contato Realizado':'blue','Medida Definida':'amber','Em Execução':'amber','Regularizado':'green'};
-var MEDIDAS = ['Desligamento','Bloqueio','Remoção','Relotação'];
+var STATUS_PROCESSO = ['Pendente de Análise','Em Contato','Contatado via Whatsapp','E-mail enviado ao servidor','Sem comunicação','Contato Realizado','Informar à CPG','Em Execução','Regularizado'];
+var STATUS_COLOR = {'Pendente de Análise':'gray','Em Contato':'blue','Contatado via Whatsapp':'blue','E-mail enviado ao servidor':'blue','Sem comunicação':'red','Contato Realizado':'blue','Informar à CPG':'amber','Em Execução':'amber','Regularizado':'green'};
+var MEDIDAS = ['Desligamento','Remoção','Relotação'];
 var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
+var TECNICO_TRATATIVA_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
 var MEDIDA_COLOR = {'Desligamento':'red','Bloqueio':'amber','Remoção':'purple','Relotação':'blue'};
 var FILTER_DEFS = [
   {key:'nre', label:'NTE'},
@@ -444,6 +445,17 @@ function seedIfEmpty(){
     }
   }).catch(function(e){ console.error('SAGP: erro ao verificar base inicial', e); updateSyncStatus('error','Erro ao acessar o Firebase — verifique config/regras'); });
 }
+function migrateLegacyStatusValues(){
+  var touched = [];
+  RECORDS.forEach(function(r){
+    if(r.statusProcesso === 'Medida Definida'){
+      r.statusProcesso = 'Informar à CPG';
+      r.historico.push({data:todayIso(), texto:'Status "Medida Definida" renomeado automaticamente para "Informar à CPG".'});
+      touched.push(r);
+    }
+  });
+  if(touched.length){ persist(); syncToFirestore(touched); }
+}
 function startSync(){
   db.collection(FIRESTORE_COLLECTION).onSnapshot(function(snapshot){
     var docs = [];
@@ -453,6 +465,7 @@ function startSync(){
     UI_LOADING = false;
     updateSyncStatus('ok');
     StorageAdapter.save(RECORDS);
+    migrateLegacyStatusValues();
     render();
   }, function(err){
     console.error('SAGP: erro no listener do Firestore', err);
@@ -591,6 +604,7 @@ function initApp(){
       RECORDS = RAW_DATA.map(function(r){ return Object.assign({}, r, {historico:(r.historico||[]).slice()}); });
       StorageAdapter.save(RECORDS);
     }
+    migrateLegacyStatusValues();
     updateSyncStatus('off');
   }
   navigate('dashboard');
@@ -1099,9 +1113,12 @@ function staticField(label, value){
   var v = (value===undefined||value===null||value==='') ? '—' : value;
   return '<div class="field-static"><span class="lbl">'+esc(label)+'</span>'+esc(v)+'</div>';
 }
-function responsavelDatalistHtml(){
-  var opts = uniqueOptions('responsavel');
-  return '<datalist id="responsavel-suggestions">'+opts.map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist>';
+function tecnicoOptionsHtml(current){
+  var opts = TECNICO_TRATATIVA_OPTS.slice();
+  if(current && opts.indexOf(current)===-1) opts.push(current);
+  var html = '<option value="">Não definido</option>';
+  html += opts.map(function(t){ return '<option value="'+esc(t)+'" '+(current===t?'selected':'')+'>'+esc(t)+'</option>'; }).join('');
+  return html;
 }
 function renderFichaDados(r, cadCount){
   var alerts = '';
@@ -1139,10 +1156,10 @@ function renderFichaDados(r, cadCount){
     '<div class="field"><label>Processo SEI</label><input type="text" id="f-processoSei" data-action="autosave-text" data-field="processoSei" value="'+esc(r.processoSei)+'" placeholder="Ex: 00000.000000/2026-00"></div>'+
     '<div class="field"><label>Status do processo</label><select id="f-statusProcesso" data-action="autosave-select" data-field="statusProcesso">'+
     STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'" '+(r.statusProcesso===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field"><label>Responsável pelo caso</label><input type="text" id="f-responsavel" data-action="autosave-text" data-field="responsavel" list="responsavel-suggestions" value="'+esc(r.responsavel)+'" placeholder="Nome do técnico responsável"></div>'+
+    '<div class="field"><label>Técnico em Tratativa</label><select id="f-responsavel" data-action="autosave-select" data-field="responsavel">'+tecnicoOptionsHtml(r.responsavel)+'</select></div>'+
     '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'"></div>'+
     '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
-    '</div>'+responsavelDatalistHtml();
+    '</div>';
 
   html += '<div class="section-title">Anexo (print de tela)</div>';
   if(r.anexoImagem){
@@ -1334,12 +1351,11 @@ function openNovoModal(){
           '<div class="section-title">Regularização</div><div class="field-grid">'+
           '<div class="field"><label>Medida a ser tomada</label><select id="nf-medidaTomada"><option value="">Não definida</option>'+
           MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('')+'</select></div>'+
-          '<div class="field"><label>Responsável</label><input type="text" id="nf-responsavel" list="responsavel-suggestions"></div>'+
+          '<div class="field"><label>Técnico em Tratativa</label><select id="nf-responsavel">'+tecnicoOptionsHtml('')+'</select></div>'+
           '</div>'+
         '</div>'+
         '<div class="modal-footer"><button class="btn" data-action="close-modal">Cancelar</button>'+
         '<button class="btn btn-primary" data-action="save-novo">Criar registro</button></div>'+
-        responsavelDatalistHtml()+
       '</div></div>';
 }
 function saveNovoRegistro(){
