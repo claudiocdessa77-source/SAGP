@@ -288,6 +288,10 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .paste-zone p{margin:2px 0;}
 .paste-zone-alt{font-size:11.5px;color:var(--text-muted);}
 .anexo-preview img{max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block;cursor:zoom-in;}
+.lightbox-overlay{position:fixed;inset:0;background:rgba(11,21,38,.88);display:flex;align-items:center;justify-content:center;z-index:500;padding:40px;}
+.lightbox-overlay img{max-width:95vw;max-height:90vh;border-radius:8px;box-shadow:var(--shadow-lg);cursor:default;}
+.lightbox-close{position:fixed;top:20px;right:24px;background:rgba(255,255,255,.14);color:#fff;width:38px;height:38px;border-radius:8px;}
+.lightbox-close:hover{background:rgba(255,255,255,.26);}
 .dropzone.drag{border-color:var(--gold-500);background:var(--gold-50);}
 .dropzone .ic{font-size:34px;color:var(--text-muted);margin-bottom:12px;display:block;}
 .dropzone h3{font-size:14.5px;font-weight:500;margin-bottom:5px;}
@@ -358,6 +362,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
   </div>
 </div>
 <div id="modal-root"></div>
+<div id="lightbox-root"></div>
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -1132,7 +1137,7 @@ function renderFichaDados(r, cadCount){
   html += '<div class="section-title">Anexo (print de tela)</div>';
   if(r.anexoImagem){
     html += '<div class="anexo-preview">'+
-      '<a href="'+r.anexoImagem+'" target="_blank" title="Abrir em tamanho real"><img src="'+r.anexoImagem+'" alt="Print anexado"></a>'+
+      '<img src="'+r.anexoImagem+'" alt="Print anexado" data-action="open-anexo-lightbox" title="Clique para ampliar">'+
       '<div style="margin-top:8px"><button class="btn btn-sm btn-danger" data-action="remove-anexo">Remover e colar outro</button></div>'+
       '</div>';
   } else {
@@ -1214,6 +1219,14 @@ function compressImageToDataUrl(imgEl, maxWidth, quality){
   ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', quality);
 }
+function openAnexoLightbox(dataUrl){
+  byId('lightbox-root').innerHTML =
+    '<div class="lightbox-overlay" data-action="close-lightbox">'+
+      '<img src="'+dataUrl+'" alt="Print em tamanho maior">'+
+      '<button class="icon-btn lightbox-close" data-action="close-lightbox" aria-label="Fechar">&#10005;</button>'+
+    '</div>';
+}
+function closeLightbox(){ byId('lightbox-root').innerHTML=''; }
 function saveAnexoFromImage(img){
   var maxWidth = 1000, quality = 0.75, attempts = 0;
   function tryOnce(){
@@ -1814,6 +1827,13 @@ function handleDelegatedClick(e){
   else if(action==='remove-anexo'){
     if(UI.currentRecordId){ commitAutosave(UI.currentRecordId, 'anexoImagem', ''); renderModal(); toast('Print removido.'); }
   }
+  else if(action==='open-anexo-lightbox'){
+    if(UI.currentRecordId){
+      var rimg = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+      if(rimg && rimg.anexoImagem) openAnexoLightbox(rimg.anexoImagem);
+    }
+  }
+  else if(action==='close-lightbox') closeLightbox();
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
