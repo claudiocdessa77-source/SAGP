@@ -978,6 +978,7 @@ function renderTable(items, cadMap){
     '<th class="cell-check"><input type="checkbox" data-action="select-all-page"></th>'+
     sortTh('nome','Profissional')+sortTh('nre','NTE')+sortTh('municipio','Município')+
     '<th>Órgão / lotação oficial</th>'+sortTh('cargo','Cargo')+sortTh('situacaoEspecial','Situação especial')+
+    sortTh('formacao','Formação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
     sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th></tr></thead><tbody>';
   items.forEach(function(r){
     var multi = cadMap.get(r.cadastro)>1 ? '<span class="multi-flag" title="Servidor possui mais de um registro no sistema">&#9888;</span>' : '';
@@ -989,6 +990,8 @@ function renderTable(items, cadMap){
       '<td>'+esc(r.orgao)+'</td>'+
       '<td>'+esc(r.cargo)+'</td>'+
       '<td>'+esc(r.situacaoEspecial)+'</td>'+
+      '<td>'+(esc(r.formacao)||'—')+'</td>'+
+      '<td>'+(esc(r.bloqueioPagamento)||'—')+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td>'+
       '<td>'+medidaBadge(r.medidaTomada)+'</td>'+
       '<td><button class="icon-btn" data-action="open-ficha" data-id="'+esc(r.id)+'" aria-label="Abrir ficha">&#8250;</button></td>'+
@@ -1245,7 +1248,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1474,7 +1477,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
