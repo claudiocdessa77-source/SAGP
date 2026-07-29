@@ -352,7 +352,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.13</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.14</div>
     </div>
   </nav>
   <div class="main">
@@ -398,7 +398,7 @@ var FILTER_DEFS = [
   {key:'situacao', label:'Situação'},
   {key:'situacaoEspecial', label:'Situação especial'}
 ];
-var FIELD_LABELS = {statusProcesso:'Status do processo', medidaTomada:'Medida'};
+var FIELD_LABELS = {statusProcesso:'Status do processo', medidaTomada:'Medida', bloqueioPagamento:'Bloqueio de pagamento'};
 FILTER_DEFS.forEach(function(fd){ FIELD_LABELS[fd.key] = fd.label; });
 
 /* ============ FIREBASE (banco compartilhado entre máquinas) ============
@@ -581,7 +581,7 @@ var StorageAdapter = (function(){
 var RECORDS = [];
 var UI = {
   view: 'dashboard',
-  filters: { search:'', quickFlags:new Set(), nre:new Set(), municipio:new Set(), orgao:new Set(), tipoServidor:new Set(), cargo:new Set(), formacao:new Set(), situacao:new Set(), situacaoEspecial:new Set(), statusProcesso:new Set(), medidaTomada:new Set() },
+  filters: { search:'', quickFlags:new Set(), nre:new Set(), municipio:new Set(), orgao:new Set(), tipoServidor:new Set(), cargo:new Set(), formacao:new Set(), situacao:new Set(), situacaoEspecial:new Set(), statusProcesso:new Set(), medidaTomada:new Set(), bloqueioPagamento:new Set() },
   sortField: 'nome', sortDir: 'asc',
   page: 1, pageSize: 50,
   openMsel: null, mselSearch: {},
@@ -699,7 +699,7 @@ function hasContact(r){ return !!(r.telefone && String(r.telefone).trim()) || !!
 function buildCadastroCountMap(){ var m = new Map(); RECORDS.forEach(function(r){ var k = (r.nome||'')+'|'+r.cadastro; m.set(k, (m.get(k)||0)+1); }); return m; }
 function uniqueOptions(field){
   var set = new Set();
-  RECORDS.forEach(function(r){ var v = r[field]; if(field==='medidaTomada' && !v) v='(Não definida)'; if(v) set.add(v); });
+  RECORDS.forEach(function(r){ var v = r[field]; if((field==='medidaTomada'||field==='bloqueioPagamento') && !v) v = field==='medidaTomada' ? '(Não definida)' : '(Não definido)'; if(v) set.add(v); });
   return Array.from(set).sort(function(a,b){ return a.localeCompare(b,'pt-BR'); });
 }
 function countBy(list, field, mapper){
@@ -726,7 +726,7 @@ function computeKPIsFor(list){
 }
 
 /* ============ FILTERS ============ */
-var FILTER_KEYS = ['nre','municipio','orgao','tipoServidor','cargo','formacao','situacao','situacaoEspecial','statusProcesso','medidaTomada'];
+var FILTER_KEYS = ['nre','municipio','orgao','tipoServidor','cargo','formacao','situacao','situacaoEspecial','statusProcesso','medidaTomada','bloqueioPagamento'];
 var QUICKFLAG_LABELS = {semEmail:'Sem e-mail', semTelefone:'Sem telefone', semFormacao:'Sem formação'};
 function isEmptyVal(v){ return !v || !String(v).trim(); }
 function matchesFilters(r){
@@ -736,7 +736,7 @@ function matchesFilters(r){
   if(f.quickFlags.has('semFormacao') && !isEmptyVal(r.formacao)) return false;
   if(f.search){
     var s = f.search.toLowerCase();
-    var hay = (r.nome+' '+r.cadastro+' '+r.cadastroSap).toLowerCase();
+    var hay = (r.nome+' '+r.cadastro+' '+r.cadastroSap+' '+r.cargo).toLowerCase();
     if(hay.indexOf(s)===-1) return false;
   }
   for(var i=0;i<FILTER_KEYS.length;i++){
@@ -744,6 +744,7 @@ function matchesFilters(r){
     if(set && set.size>0){
       var val = r[key];
       if(key==='medidaTomada' && !val) val='(Não definida)';
+      if(key==='bloqueioPagamento' && !val) val='(Não definido)';
       if(!set.has(val)) return false;
     }
   }
@@ -913,6 +914,7 @@ function filterBarHtml(){
   var html = FILTER_DEFS.map(function(fd){ return renderMultiSelect(fd.key, fd.label); }).join('');
   html += renderMultiSelect('statusProcesso','Status do processo');
   html += renderMultiSelect('medidaTomada','Medida');
+  html += renderMultiSelect('bloqueioPagamento','Bloqueio de pagamento');
   html += quickToggleBtn('semEmail')+quickToggleBtn('semTelefone')+quickToggleBtn('semFormacao');
   var n = countActiveFilters();
   if(n>0) html += '<button class="chip-clear" data-action="clear-filters"><span>&#10005;</span> Limpar filtros ('+n+')</button>';
@@ -1033,7 +1035,7 @@ function renderTable(items, cadMap){
   var html = '<table><thead><tr>'+
     '<th class="cell-check"><input type="checkbox" data-action="select-all-page"></th>'+
     sortTh('nome','Profissional')+sortTh('nre','NTE')+sortTh('municipio','Município')+
-    '<th>Órgão / lotação oficial</th>'+sortTh('cargo','Cargo')+sortTh('situacaoEspecial','Situação especial')+
+    sortTh('orgao','Órgão / lotação oficial')+sortTh('cargo','Cargo')+sortTh('situacaoEspecial','Situação especial')+
     sortTh('formacao','Formação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
     sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th></tr></thead><tbody>';
   items.forEach(function(r){
