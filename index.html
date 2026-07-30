@@ -309,7 +309,11 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .paste-zone .ic{font-size:24px;display:block;margin-bottom:8px;color:var(--text-muted);}
 .paste-zone p{margin:2px 0;}
 .paste-zone-alt{font-size:11.5px;color:var(--text-muted);}
-.anexo-preview img{max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block;cursor:zoom-in;}
+.anexo-thumb-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+.anexo-thumb{position:relative;width:64px;height:64px;border-radius:8px;border:1px solid var(--border);overflow:hidden;cursor:zoom-in;flex:none;background:var(--surface-alt);}
+.anexo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.anexo-thumb-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:5px;border:none;background:rgba(11,21,38,.65);color:#fff;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.anexo-thumb-remove:hover{background:var(--danger-600);}
 .lightbox-overlay{position:fixed;inset:0;background:rgba(11,21,38,.88);display:flex;align-items:center;justify-content:center;z-index:500;padding:40px;}
 .lightbox-overlay img{max-width:95vw;max-height:90vh;border-radius:8px;box-shadow:var(--shadow-lg);cursor:default;}
 .lightbox-close{position:fixed;top:20px;right:24px;background:rgba(255,255,255,.14);color:#fff;width:38px;height:38px;border-radius:8px;}
@@ -374,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.22</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.24</div>
     </div>
   </nav>
   <div class="main">
@@ -401,6 +405,7 @@ const RAW_DATA = [{"id": "sagp_0001", "cadastro": 92181486, "cadastroSap": 92181
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
 <script>
 /* ============ CONSTANTS ============ */
 var STORAGE_KEY = 'sagp_records_v1';
@@ -451,8 +456,74 @@ function initFirebase(){
     try{ db.enablePersistence({synchronizeTabs:true}).catch(function(err){ console.warn('SAGP: cache offline indisponível:', err.code||err.message); }); }
     catch(e){ console.warn('SAGP: enablePersistence indisponível nesta versão do SDK.'); }
     firebaseReady = true;
+    initAuth();
     return true;
   }catch(e){ console.error('SAGP: erro ao iniciar Firebase', e); return false; }
+}
+/* ============ LOGIN (Firebase Authentication) — opcional, não bloqueia o uso do sistema.
+   Só passa a valer de verdade quando as regras do Firestore forem trocadas para exigir
+   "request.auth != null" (ver instruções pedidas ao Claude). Até lá é só um recurso extra. */
+var AUTH_DOMAIN_SUFFIX = '@sagp.local';
+var auth = null;
+var authReady = false;
+function slugifyName(name){
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]+/g,'.').replace(/^\.+|\.+$/g,'');
+}
+var EMAIL_TO_NAME = {};
+TECNICO_TRATATIVA_OPTS.forEach(function(name){ EMAIL_TO_NAME[slugifyName(name)+AUTH_DOMAIN_SUFFIX] = name; });
+function initAuth(){
+  if(typeof firebase==='undefined' || !firebase.auth) return;
+  try{
+    auth = firebase.auth();
+    authReady = true;
+    auth.onAuthStateChanged(function(user){
+      if(user){
+        var name = EMAIL_TO_NAME[(user.email||'').toLowerCase()] || (user.email==='admin'+AUTH_DOMAIN_SUFFIX ? 'Administrador' : null);
+        UI.loggedInEmail = user.email;
+        if(name){ UI.currentUserName = name; try{ localStorage.setItem('sagp_current_user', name); }catch(e){} }
+      } else {
+        UI.loggedInEmail = null;
+      }
+      renderUserBadge();
+    });
+  }catch(e){ console.warn('SAGP: erro ao iniciar Authentication', e); }
+}
+function openLoginPopup(){
+  byId('lightbox-root').innerHTML =
+    '<div class="lightbox-overlay" data-action="close-lightbox">'+
+      '<div class="msg-popup" data-action="stop-prop" style="max-width:360px">'+
+        '<div class="msg-popup-title">Entrar</div>'+
+        '<div class="field"><label>Usuário</label><input type="text" id="login-user" placeholder="nome.sobrenome" autocomplete="username"></div>'+
+        '<div class="field"><label>Senha</label><input type="password" id="login-pass" autocomplete="current-password"></div>'+
+        '<div id="login-error" style="display:none;color:var(--danger-600);font-size:12px;margin-bottom:8px"></div>'+
+        '<div class="msg-popup-actions"><button class="btn" data-action="close-lightbox">Cancelar</button>'+
+        '<button class="btn btn-primary" data-action="do-login">Entrar</button></div>'+
+      '</div></div>';
+  byId('login-user').focus();
+}
+function doLogin(){
+  if(!auth){ toast('Authentication não está configurado ainda.', true); return; }
+  var userVal = (byId('login-user').value||'').trim().toLowerCase();
+  var pass = byId('login-pass').value||'';
+  if(!userVal || !pass) return;
+  var email = userVal.indexOf('@')!==-1 ? userVal : userVal+AUTH_DOMAIN_SUFFIX;
+  var errEl = byId('login-error');
+  errEl.style.display = 'none';
+  auth.signInWithEmailAndPassword(email, pass).then(function(){
+    closeLightbox();
+    toast('Login realizado.');
+  }).catch(function(err){
+    errEl.textContent = 'Usuário ou senha incorretos.';
+    errEl.style.display = 'block';
+  });
+}
+function doLogout(){
+  if(auth) auth.signOut();
+  UI.loggedInEmail = null;
+  UI.currentUserName = null;
+  try{ localStorage.removeItem('sagp_current_user'); }catch(e){}
+  renderUserBadge();
+  toast('Você saiu.');
 }
 function updateSyncStatus(state, msg){
   var dot = byId('sync-dot'); var label = byId('sync-label');
@@ -487,6 +558,20 @@ function migrateLegacyStatusValues(){
   });
   if(touched.length){ persist(); syncToFirestore(touched); }
 }
+function migrateLegacyAnexo(){
+  var touched = [];
+  RECORDS.forEach(function(r){
+    if(r.anexoImagem && !(r.anexos && r.anexos.length)){
+      r.anexos = [{data:r.anexoImagem, addedAt:''}];
+      delete r.anexoImagem;
+      touched.push(r);
+    } else if(r.anexoImagem !== undefined){
+      delete r.anexoImagem;
+      touched.push(r);
+    }
+  });
+  if(touched.length){ persist(); syncToFirestore(touched); }
+}
 function startSync(){
   db.collection(FIRESTORE_COLLECTION).onSnapshot(function(snapshot){
     var docs = [];
@@ -497,6 +582,7 @@ function startSync(){
     updateSyncStatus('ok');
     StorageAdapter.save(RECORDS);
     migrateLegacyStatusValues();
+    migrateLegacyAnexo();
     render();
   }, function(err){
     console.error('SAGP: erro no listener do Firestore', err);
@@ -618,7 +704,8 @@ var UI = {
   lastBloqueioImportResult: null,
   lastFilterChange: null,
   needsScrollReset: false,
-  currentUserName: null
+  currentUserName: null,
+  loggedInEmail: null
 };
 
 /* ============ INIT ============ */
@@ -641,6 +728,7 @@ function initApp(){
       StorageAdapter.save(RECORDS);
     }
     migrateLegacyStatusValues();
+    migrateLegacyAnexo();
     updateSyncStatus('off');
   }
   navigate('dashboard');
@@ -1176,11 +1264,20 @@ function takeoverFicha(id){
 function renderUserBadge(){
   var el = byId('user-badge-row');
   if(!el) return;
-  if(UI.currentUserName){
-    el.innerHTML = '<span class="user-badge-name" title="'+esc(UI.currentUserName)+'">&#128100; '+esc(UI.currentUserName)+'</span><button class="user-badge-switch" data-action="switch-user">trocar</button>';
+  var html;
+  if(UI.loggedInEmail){
+    html = '<span class="user-badge-name" title="'+esc(UI.currentUserName||UI.loggedInEmail)+'">&#128100; '+esc(UI.currentUserName||UI.loggedInEmail)+'</span>'+
+      '<button class="user-badge-switch" data-action="do-logout">sair</button>';
+  } else if(UI.currentUserName){
+    html = '<span class="user-badge-name" title="'+esc(UI.currentUserName)+'">&#128100; '+esc(UI.currentUserName)+'</span>'+
+      '<button class="user-badge-switch" data-action="switch-user">trocar</button>';
   } else {
-    el.innerHTML = '<button class="user-badge-switch" data-action="switch-user">Quem é você?</button>';
+    html = '<button class="user-badge-switch" data-action="switch-user">Quem é você?</button>';
   }
+  if(authReady && !UI.loggedInEmail){
+    html += '<button class="user-badge-switch" data-action="open-login-popup">entrar</button>';
+  }
+  el.innerHTML = html;
 }
 function openUserSwitcher(){
   byId('lightbox-root').innerHTML =
@@ -1294,18 +1391,20 @@ function renderFichaDados(r, cadCount){
     '</div>';
 
   html += '<div class="section-title">Anexo (print de tela)</div>';
-  if(r.anexoImagem){
-    html += '<div class="anexo-preview">'+
-      '<img src="'+r.anexoImagem+'" alt="Print anexado" data-action="open-anexo-lightbox" title="Clique para ampliar">'+
-      '<div style="margin-top:8px"><button class="btn btn-sm btn-danger" data-action="remove-anexo">Remover e colar outro</button></div>'+
-      '</div>';
-  } else {
-    html += '<div class="paste-zone" tabindex="0" data-paste-zone="1">'+
-      '<span class="ic">&#128247;</span>'+
-      '<p><b>Clique aqui e cole (Ctrl+V)</b> um print de tela ou uma cópia de células do Excel como imagem</p>'+
-      '<p class="paste-zone-alt">ou <label for="anexo-file-input" style="color:var(--gold-600);cursor:pointer;text-decoration:underline">selecione uma imagem</label></p>'+
-      '<input type="file" id="anexo-file-input" data-action="anexo-file" accept="image/*" style="display:none">'+
-      '</div>';
+  html += '<div class="paste-zone" tabindex="0" data-paste-zone="1">'+
+    '<span class="ic">&#128247;</span>'+
+    '<p><b>Clique aqui e cole (Ctrl+V)</b> um print de tela ou uma cópia de células do Excel como imagem</p>'+
+    '<p class="paste-zone-alt">ou <label for="anexo-file-input" style="color:var(--gold-600);cursor:pointer;text-decoration:underline">selecione uma imagem</label></p>'+
+    '<input type="file" id="anexo-file-input" data-action="anexo-file" accept="image/*" style="display:none">'+
+    '</div>';
+  var anexos = r.anexos || [];
+  if(anexos.length){
+    html += '<div class="anexo-thumb-row">'+anexos.map(function(a,i){
+      return '<div class="anexo-thumb" data-action="open-anexo-lightbox" data-idx="'+i+'" title="'+(a.addedAt?'Anexado em '+fmtDate(a.addedAt):'Clique para ampliar')+'">'+
+        '<img src="'+a.data+'" alt="Print anexado">'+
+        '<button type="button" class="anexo-thumb-remove" data-action="remove-anexo" data-idx="'+i+'" title="Remover este print" aria-label="Remover">&#10005;</button>'+
+        '</div>';
+    }).join('')+'</div>';
   }
   return html;
 }
@@ -1428,19 +1527,28 @@ function copyLotacaoMessage(){
   }
 }
 function saveAnexoFromImage(img){
+  if(!UI.currentRecordId) return;
+  var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+  if(!r) return;
+  var existingBytes = (r.anexos||[]).reduce(function(sum,a){ return sum + a.data.length*0.75; }, 0);
+  var budget = 700000 - existingBytes;
+  if(budget < 15000){ toast('Limite de anexos atingido para esta ficha. Remova algum print antigo antes de adicionar outro.', true); return; }
   var maxWidth = 1000, quality = 0.75, attempts = 0;
   function tryOnce(){
     attempts++;
     var dataUrl = compressImageToDataUrl(img, maxWidth, quality);
     var approxBytes = dataUrl.length*0.75;
-    if(approxBytes > 700000 && attempts < 6){
-      quality = Math.max(0.3, quality-0.15);
-      maxWidth = Math.max(400, maxWidth*0.85);
+    if(approxBytes > budget && attempts < 7){
+      quality = Math.max(0.25, quality-0.15);
+      maxWidth = Math.max(300, maxWidth*0.8);
       tryOnce();
       return;
     }
-    if(!UI.currentRecordId){ return; }
-    commitAutosave(UI.currentRecordId, 'anexoImagem', dataUrl);
+    if(approxBytes > budget){ toast('Essa imagem não coube no espaço disponível para esta ficha. Remova algum print antigo e tente de novo.', true); return; }
+    var anexosNow = (r.anexos||[]).slice();
+    anexosNow.push({data:dataUrl, addedAt:todayIso()});
+    r.historico.push({data:todayIso(), texto:'Novo print anexado à ficha.'});
+    commitAutosave(r.id, 'anexos', anexosNow);
     renderModal();
     toast('Print anexado à ficha.');
   }
@@ -1566,7 +1674,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1811,7 +1919,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -2114,18 +2222,32 @@ function handleDelegatedClick(e){
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
   else if(action==='toggle-contact-flag') toggleContactFlag(el.dataset.field);
   else if(action==='remove-anexo'){
-    if(UI.currentRecordId){ commitAutosave(UI.currentRecordId, 'anexoImagem', ''); renderModal(); toast('Print removido.'); }
+    if(UI.currentRecordId){
+      var idx = parseInt(el.dataset.idx,10);
+      var rrm = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+      if(rrm && rrm.anexos && !isNaN(idx)){
+        var novosAnexos = rrm.anexos.slice();
+        novosAnexos.splice(idx,1);
+        commitAutosave(rrm.id, 'anexos', novosAnexos);
+        renderModal();
+        toast('Print removido.');
+      }
+    }
   }
   else if(action==='open-anexo-lightbox'){
     if(UI.currentRecordId){
+      var idx2 = parseInt(el.dataset.idx,10);
       var rimg = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
-      if(rimg && rimg.anexoImagem) openAnexoLightbox(rimg.anexoImagem);
+      if(rimg && rimg.anexos && rimg.anexos[idx2]) openAnexoLightbox(rimg.anexos[idx2].data);
     }
   }
   else if(action==='close-lightbox') closeLightbox();
   else if(action==='open-lotacao-msg') openLotacaoMessagePopup();
   else if(action==='copy-lotacao-msg') copyLotacaoMessage();
   else if(action==='switch-user') openUserSwitcher();
+  else if(action==='open-login-popup') openLoginPopup();
+  else if(action==='do-login') doLogin();
+  else if(action==='do-logout') doLogout();
   else if(action==='set-current-user') setCurrentUser(el.dataset.name);
   else if(action==='view-only-ficha') viewOnlyFicha(el.dataset.id);
   else if(action==='takeover-ficha') takeoverFicha(el.dataset.id);
