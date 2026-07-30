@@ -233,34 +233,37 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .modal-overlay{position:fixed;inset:0;background:rgba(11,21,38,.5);display:flex;align-items:flex-start;justify-content:center;padding:38px 20px;z-index:200;overflow-y:auto;}
 .modal{background:var(--surface);border-radius:14px;width:100%;max-width:840px;box-shadow:var(--shadow-lg);margin-bottom:40px;}
 .modal-sm{max-width:480px;}
-.modal-header{display:flex;align-items:flex-start;gap:14px;padding:22px 26px;border-bottom:1px solid var(--border);}
-.modal-header-text h2{font-size:17px;font-weight:500;}
-.modal-header-text .sub{font-size:12.5px;color:var(--text-secondary);margin-top:3px;}
+.modal-overlay.overlay-full{padding:0;align-items:stretch;overflow:hidden;}
+.modal.modal-full{max-width:none;width:100%;height:100vh;border-radius:0;margin-bottom:0;display:flex;flex-direction:column;box-shadow:none;}
+.modal.modal-full .modal-body{flex:1;min-height:0;max-height:none;}
+.modal-header{display:flex;align-items:flex-start;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border);}
+.modal-header-text h2{font-size:16px;font-weight:500;}
+.modal-header-text .sub{font-size:12px;color:var(--text-secondary);margin-top:2px;}
 .modal-close{margin-left:auto;flex:none;}
-.modal-body{padding:22px 26px;max-height:70vh;overflow-y:auto;}
-.modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:16px 26px;border-top:1px solid var(--border);}
+.modal-body{padding:16px 22px;max-height:70vh;overflow-y:auto;}
+.modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid var(--border);}
 .autosave-note{font-size:11.5px;color:var(--text-muted);display:flex;align-items:center;gap:5px;}
-.modal-tabs{display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--border);}
-.modal-tab{padding:11px 4px;margin-right:20px;font-size:13px;color:var(--text-secondary);border-bottom:2px solid transparent;background:none;}
+.modal-tabs{display:flex;gap:4px;padding:0 22px;border-bottom:1px solid var(--border);}
+.modal-tab{padding:9px 4px;margin-right:18px;font-size:13px;color:var(--text-secondary);border-bottom:2px solid transparent;background:none;}
 .modal-tab.active{color:var(--navy-800);border-color:var(--gold-500);font-weight:500;}
 
-.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.field{margin-bottom:14px;}
-.field label{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:5px;}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;}
+.field{margin-bottom:9px;}
+.field label{display:block;font-size:11.5px;font-weight:500;color:var(--text-secondary);margin-bottom:4px;}
 .field label .req{color:var(--danger-500);}
 .field input[type=text],.field input[type=tel],.field input[type=email],.field input[type=date],.field select,.field textarea{
-  width:100%;padding:9px 11px;border:1px solid var(--border-strong);border-radius:8px;outline:none;background:var(--surface);
+  width:100%;padding:7px 10px;border:1px solid var(--border-strong);border-radius:7px;outline:none;background:var(--surface);
 }
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold-500);box-shadow:0 0 0 3px var(--gold-50);}
-.field textarea{resize:vertical;min-height:70px;}
-.check-inline{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
-.tel-group{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.field textarea{resize:vertical;min-height:56px;}
+.check-inline{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
+.tel-group{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 @media (max-width:640px){.tel-group{grid-template-columns:1fr;}}
 .check-inline input{flex:none;}
 .field input:disabled{background:var(--surface-alt);color:var(--text-muted);cursor:not-allowed;}
-.field-static{padding:9px 0;color:var(--text-primary);font-size:13px;}
-.field-static .lbl{font-size:12px;color:var(--text-muted);display:block;margin-bottom:2px;}
-.section-title{font-size:12.5px;font-weight:500;color:var(--gold-600);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 12px;padding-top:14px;border-top:1px solid var(--border);}
+.field-static{padding:6px 0;color:var(--text-primary);font-size:12.5px;}
+.field-static .lbl{font-size:11px;color:var(--text-muted);display:block;margin-bottom:1px;}
+.section-title{font-size:12px;font-weight:500;color:var(--gold-600);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border);}
 .section-title:first-child{margin-top:0;padding-top:0;border-top:none;}
 
 .alert{display:flex;gap:10px;padding:12px 14px;border-radius:9px;font-size:12.5px;margin-bottom:16px;align-items:flex-start;}
@@ -352,7 +355,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.14</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.15</div>
     </div>
   </nav>
   <div class="main">
@@ -1122,10 +1125,10 @@ function renderModal(){
       '<button class="btn btn-primary" data-action="close-modal">Fechar</button>'
     : '<button class="btn btn-primary" data-action="close-modal">Fechar</button>';
   root.innerHTML =
-    '<div class="modal-overlay" data-action="noop">'+
-      '<div class="modal" data-action="stop-prop">'+
+    '<div class="modal-overlay overlay-full" data-action="noop">'+
+      '<div class="modal modal-full" data-action="stop-prop">'+
         '<div class="modal-header"><div class="modal-header-text"><h2>'+esc(r.nome)+'</h2>'+
-          '<div class="sub tnum">Cadastro '+esc(r.cadastro)+' &middot; SAP '+esc(r.cadastroSap)+' &middot; '+esc(r.cargo)+'</div></div></div>'+
+          '<div class="sub tnum">Cadastro '+esc(r.cadastro)+' &middot; '+esc(r.cargo)+'</div></div></div>'+
         '<div class="modal-tabs">'+
           '<button class="modal-tab '+(UI.modalTab==='dados'?'active':'')+'" data-action="modal-tab" data-tab="dados">Dados e regularização</button>'+
           '<button class="modal-tab '+(UI.modalTab==='historico'?'active':'')+'" data-action="modal-tab" data-tab="historico">Histórico ('+r.historico.length+')</button></div>'+
@@ -1150,8 +1153,8 @@ function renderFichaDados(r, cadCount){
   if(cadCount>1) alerts += '<div class="alert alert-info"><span class="ic">&#9432;</span><div>Este servidor (cadastro '+esc(r.cadastro)+') possui <b>'+cadCount+' registros</b> no sistema, em lotações diferentes. Verifique os demais antes de decidir a medida.</div></div>';
 
   var html = alerts;
-  html += '<div class="section-title">Dados funcionais (origem: extração NRE / Diário)</div><div class="field-grid">';
-  html += staticField('Matrícula', r.cadastro)+staticField('Cadastro SAP', r.cadastroSap)+
+  html += '<div class="section-title">Dados funcionais</div><div class="field-grid">';
+  html += staticField('Matrícula', r.cadastro)+
     staticField('NTE', r.nre)+staticField('Município', r.municipio)+staticField('Órgão / lotação oficial', r.orgao)+
     staticField('Código SECUL', r.codsecul)+staticField('Tipo de servidor', r.tipoServidor)+staticField('Regime', r.regime?r.regime+'h':'')+
     staticField('Cargo', r.cargo)+staticField('Situação', r.situacao)+staticField('Situação especial', r.situacaoEspecial)+
