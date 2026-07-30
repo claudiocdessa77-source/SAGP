@@ -259,6 +259,8 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .field textarea{resize:vertical;min-height:56px;}
 .check-inline{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
 .quick-contact-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.contact-toggle-btn.active{background:var(--gold-500);border-color:var(--gold-500);color:#fff;font-weight:500;}
+.contact-toggle-btn.active:hover{background:var(--gold-600);}
 .quick-contact-row .btn{padding:5px 10px;font-size:11.5px;}
 .tel-group{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 @media (max-width:640px){.tel-group{grid-template-columns:1fr;}}
@@ -358,7 +360,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.19</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.20</div>
     </div>
   </nav>
   <div class="main">
@@ -388,8 +390,8 @@ const RAW_DATA = [{"id": "sagp_0001", "cadastro": 92181486, "cadastroSap": 92181
 <script>
 /* ============ CONSTANTS ============ */
 var STORAGE_KEY = 'sagp_records_v1';
-var STATUS_PROCESSO = ['Pendente de Análise','Em Contato','Contatado via Whatsapp','E-mail enviado ao servidor','Sem comunicação','Contato Realizado','Informar à CPG','Em Execução','Regularizado'];
-var STATUS_COLOR = {'Pendente de Análise':'gray','Em Contato':'blue','Contatado via Whatsapp':'blue','E-mail enviado ao servidor':'blue','Sem comunicação':'red','Contato Realizado':'blue','Informar à CPG':'amber','Em Execução':'amber','Regularizado':'green'};
+var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Informar à CPG','Em Execução','Regularizado'];
+var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Informar à CPG':'amber','Em Execução':'amber','Regularizado':'green'};
 var MEDIDAS = ['Desligamento','Remoção','Relotação'];
 var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
 var TECNICO_TRATATIVA_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
@@ -460,10 +462,12 @@ function seedIfEmpty(){
 }
 function migrateLegacyStatusValues(){
   var touched = [];
+  var LEGACY_STATUS_MAP = {'Medida Definida':'Informar à CPG', 'Em Contato':'Pendente de Análise', 'Contatado via Whatsapp':'Pendente de Análise', 'E-mail enviado ao servidor':'Pendente de Análise', 'Sem comunicação':'Pendente de Análise'};
   RECORDS.forEach(function(r){
-    if(r.statusProcesso === 'Medida Definida'){
-      r.statusProcesso = 'Informar à CPG';
-      r.historico.push({data:todayIso(), texto:'Status "Medida Definida" renomeado automaticamente para "Informar à CPG".'});
+    var novo = LEGACY_STATUS_MAP[r.statusProcesso];
+    if(novo){
+      r.historico.push({data:todayIso(), texto:'Status "'+r.statusProcesso+'" renomeado automaticamente para "'+novo+'".'});
+      r.statusProcesso = novo;
       touched.push(r);
     }
   });
@@ -1189,12 +1193,10 @@ function renderFichaDados(r, cadCount){
     BLOQUEIO_PAGTO_OPTS.map(function(b){ return '<option value="'+esc(b)+'" '+(r.bloqueioPagamento===b?'selected':'')+'>'+esc(b)+'</option>'; }).join('')+'</select></div>'+
     '<div class="field"><label>Data do bloqueio</label><input type="date" id="f-dataBloqueio" data-action="autosave-select" data-field="dataBloqueio" value="'+esc(r.dataBloqueio)+'"></div>'+
     '<div class="field"><label>Processo SEI</label><input type="text" id="f-processoSei" data-action="autosave-text" data-field="processoSei" value="'+esc(r.processoSei)+'" placeholder="Ex: 00000.000000/2026-00"></div>'+
-    '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'">'+
-    '<div class="quick-contact-row">'+
-      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="telefone" title="Ligar e registrar contato de hoje">&#9742; Telefone</button>'+
-      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="whatsapp" title="Abrir WhatsApp e registrar contato de hoje">&#128172; WhatsApp</button>'+
-      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="email" title="Enviar e-mail e registrar contato de hoje">&#9993; E-mail</button>'+
-    '</div></div>'+
+    '<div class="field"><label>Tentativa de contato em</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'">'+
+    contactToggleRow(r, 'tent')+'</div>'+
+    '<div class="field"><label>Contato com sucesso em</label><input type="date" id="f-dataContatoSucesso" data-action="autosave-select" data-field="dataContatoSucesso" value="'+esc(r.dataContatoSucesso)+'">'+
+    contactToggleRow(r, 'suc')+'</div>'+
     '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
     '</div>';
 
@@ -1239,6 +1241,7 @@ function applyFieldSideEffects(r, field, oldVal, newVal){
   else if(field==='medidaTomada' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Medida a ser tomada definida como "'+(newVal||'não definida')+'".'});
   else if(field==='semTelefoneSap' && oldVal!==newVal) r.historico.push({data:todayIso(), texto: newVal ? 'Marcado como sem telefone cadastrado no SAP.' : 'Desmarcado "sem telefone no SAP".'});
   else if(field==='bloqueioPagamento' && oldVal!==newVal) r.historico.push({data:todayIso(), texto:'Bloqueio de pagamento definido como "'+(newVal||'não definido')+'".'});
+  else if(CONTACT_FLAG_META[field] && oldVal!==newVal) r.historico.push({data:todayIso(), texto:(newVal?'Marcado: ':'Desmarcado: ')+CONTACT_FLAG_META[field].desc+'.'});
 }
 function commitAutosave(id, field, value){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1336,29 +1339,27 @@ function handleImagePaste(e){
   }
   toast('Não encontrei uma imagem na área de transferência. Copie um print ou células do Excel como imagem.', true);
 }
-function quickContact(channel){
-  if(!UI.currentRecordId) return;
+var CONTACT_FLAG_META = {
+  tentTelefone:{icon:'&#9742;', label:'Telefone', desc:'tentativa de contato por telefone'},
+  tentWhatsapp:{icon:'&#128172;', label:'WhatsApp', desc:'tentativa de contato por WhatsApp'},
+  tentEmail:{icon:'&#9993;', label:'E-mail', desc:'tentativa de contato por e-mail'},
+  sucTelefone:{icon:'&#9742;', label:'Telefone', desc:'contato com sucesso por telefone'},
+  sucWhatsapp:{icon:'&#128172;', label:'WhatsApp', desc:'contato com sucesso por WhatsApp'},
+  sucEmail:{icon:'&#9993;', label:'E-mail', desc:'contato com sucesso por e-mail'}
+};
+function contactToggleRow(r, prefix){
+  var fields = [prefix+'Telefone', prefix+'Whatsapp', prefix+'Email'];
+  return '<div class="quick-contact-row">'+fields.map(function(f){
+    var m = CONTACT_FLAG_META[f];
+    return '<button type="button" class="btn btn-sm contact-toggle-btn '+(r[f]?'active':'')+'" data-action="toggle-contact-flag" data-field="'+f+'">'+m.icon+' '+m.label+'</button>';
+  }).join('')+'</div>';
+}
+function toggleContactFlag(field){
+  if(!UI.currentRecordId || !CONTACT_FLAG_META[field]) return;
   var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
   if(!r) return;
-  var phone = (r.telefone||r.telefone2||r.telefone3||'').replace(/\D/g,'');
-  var url = null, label = '';
-  if(channel==='telefone'){
-    if(!phone){ toast('Nenhum telefone cadastrado para essa pessoa.', true); return; }
-    url = 'tel:'+phone; label = 'Telefone';
-  } else if(channel==='whatsapp'){
-    if(!phone){ toast('Nenhum telefone cadastrado para essa pessoa.', true); return; }
-    url = 'https://wa.me/55'+phone; label = 'WhatsApp';
-  } else if(channel==='email'){
-    if(!r.email){ toast('Nenhum e-mail cadastrado para essa pessoa.', true); return; }
-    url = 'mailto:'+r.email; label = 'E-mail';
-  }
-  if(!url) return;
-  commitAutosave(r.id, 'dataUltimoContato', todayIso());
-  r.historico.push({data:todayIso(), texto:'Contato via '+label+' registrado.'});
-  persist(); syncToFirestore(r);
+  commitAutosave(r.id, field, !r[field]);
   renderModal();
-  try{ window.open(url, '_blank'); }catch(e){ console.warn('SAGP: não foi possível abrir '+label, e); }
-  toast('Contato via '+label+' registrado.');
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1433,7 +1434,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1678,7 +1679,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexoImagem:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -1979,7 +1980,7 @@ function handleDelegatedClick(e){
   else if(action==='modal-tab'){ if(UI.currentRecordId) flushAutosave(UI.currentRecordId); UI.modalTab = el.dataset.tab; renderModal(); }
   else if(action==='add-historico') addHistorico(el.dataset.id);
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
-  else if(action==='quick-contact') quickContact(el.dataset.channel);
+  else if(action==='toggle-contact-flag') toggleContactFlag(el.dataset.field);
   else if(action==='remove-anexo'){
     if(UI.currentRecordId){ commitAutosave(UI.currentRecordId, 'anexoImagem', ''); renderModal(); toast('Print removido.'); }
   }
