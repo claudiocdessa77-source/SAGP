@@ -356,7 +356,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.17</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.18</div>
     </div>
   </nav>
   <div class="main">
@@ -1155,11 +1155,12 @@ function renderFichaDados(r, cadCount){
 
   var html = alerts;
   html += '<div class="section-title">Dados funcionais</div><div class="field-grid-3">';
-  html += staticField('Matrícula', r.cadastro)+
-    staticField('NTE', r.nre)+staticField('Município', r.municipio)+staticField('Órgão / lotação oficial', r.orgao)+
-    staticField('Código SECUL', r.codsecul)+staticField('Tipo de servidor', r.tipoServidor)+staticField('Regime', r.regime?r.regime+'h':'')+
-    staticField('Cargo', r.cargo)+staticField('Situação', r.situacao)+staticField('Situação especial', r.situacaoEspecial)+
-    staticField('Carga horária (QTD)', r.qtd?r.qtd+'h':'')+staticField('Início da situação', fmtDate(r.dataInicio))+staticField('Fim da situação', fmtDate(r.dataFim));
+  html += staticField('NTE', r.nre)+staticField('Município', r.municipio)+staticField('Tipo de servidor', r.tipoServidor)+
+    staticField('Órgão / lotação oficial', r.orgao)+staticField('Código SECUL', r.codsecul)+staticField('Regime', r.regime?r.regime+'h':'')+
+    staticField('Situação especial', r.situacaoEspecial)+staticField('Situação', r.situacao);
+  html += '</div>';
+  html += '<div class="field-grid-3" style="margin-top:2px">';
+  html += staticField('Carga horária (QTD)', r.qtd?r.qtd+'h':'')+staticField('Início da situação', fmtDate(r.dataInicio))+staticField('Fim da situação', fmtDate(r.dataFim));
   html += '</div>';
 
   html += '<div class="section-title">Contato e formação</div><div class="field-grid">'+
