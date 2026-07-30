@@ -307,6 +307,12 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .lightbox-overlay img{max-width:95vw;max-height:90vh;border-radius:8px;box-shadow:var(--shadow-lg);cursor:default;}
 .lightbox-close{position:fixed;top:20px;right:24px;background:rgba(255,255,255,.14);color:#fff;width:38px;height:38px;border-radius:8px;}
 .lightbox-close:hover{background:rgba(255,255,255,.26);}
+.btn-green-icon{flex:none;width:40px;border-radius:7px;border:1px solid var(--success-700);background:var(--success-500);color:#fff;font-size:16px;cursor:pointer;}
+.btn-green-icon:hover{background:var(--success-700);}
+.msg-popup{background:#fff;border-radius:12px;padding:22px;max-width:600px;width:90vw;box-shadow:var(--shadow-lg);cursor:default;}
+.msg-popup-title{font-size:15px;font-weight:600;margin-bottom:12px;color:var(--navy-800);}
+.msg-popup-text{width:100%;min-height:220px;padding:12px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;line-height:1.55;font-family:inherit;resize:vertical;color:var(--text-primary);}
+.msg-popup-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px;}
 .dropzone.drag{border-color:var(--gold-500);background:var(--gold-50);}
 .dropzone .ic{font-size:34px;color:var(--text-muted);margin-bottom:12px;display:block;}
 .dropzone h3{font-size:14.5px;font-weight:500;margin-bottom:5px;}
@@ -360,7 +366,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.20</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.21</div>
     </div>
   </nav>
   <div class="main">
@@ -1125,6 +1131,8 @@ function renderModal(){
   if(!UI.currentRecordId){ root.innerHTML=''; return; }
   var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
   if(!r){ root.innerHTML=''; return; }
+  var prevBody = root.querySelector('.modal-body');
+  var scrollPos = prevBody ? prevBody.scrollTop : 0;
   var cadCount = RECORDS.filter(function(x){ return x.cadastro===r.cadastro; }).length;
   var footer = UI.modalTab==='dados'
     ? '<button class="btn btn-danger" data-action="delete-ficha" data-id="'+esc(r.id)+'" style="margin-right:auto">Remover registro</button>'+
@@ -1142,6 +1150,8 @@ function renderModal(){
         '<div class="modal-body">'+(UI.modalTab==='dados' ? renderFichaDados(r,cadCount) : renderFichaHistorico(r))+'</div>'+
         '<div class="modal-footer">'+footer+'</div>'+
       '</div></div>';
+  var newBody = root.querySelector('.modal-body');
+  if(newBody) newBody.scrollTop = scrollPos;
 }
 function staticField(label, value){
   var v = (value===undefined||value===null||value==='') ? '—' : value;
@@ -1180,7 +1190,9 @@ function renderFichaDados(r, cadCount){
     '<label class="check-inline"><input type="checkbox" id="f-semTelefoneSap" data-action="toggle-sem-telefone" '+(r.semTelefoneSap?'checked':'')+'> Não consta telefone no SAP</label></div>'+
     '<div class="field"><label>E-mail</label><input type="email" id="f-email" data-action="autosave-text" data-field="email" list="email-suggestions" value="'+esc(r.email)+'" placeholder="nome@educacao.ba.gov.br"><datalist id="email-suggestions"></datalist></div>'+
     '<div class="field"><label>Formação</label><input type="text" id="f-formacao" data-action="autosave-text" data-field="formacao" value="'+esc(r.formacao)+'" placeholder="Ex: Licenciatura em Letras"></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label><input type="text" id="f-lotacaoInformada" data-action="autosave-text" data-field="lotacaoInformada" value="'+esc(r.lotacaoInformada)+'" placeholder="Onde o servidor afirma estar atuando"></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Lotação informada pelo servidor</label>'+
+    '<div style="display:flex;gap:8px"><input type="text" id="f-lotacaoInformada" data-action="autosave-text" data-field="lotacaoInformada" value="'+esc(r.lotacaoInformada)+'" placeholder="Onde o servidor afirma estar atuando" style="flex:1">'+
+    '<button type="button" class="btn-green-icon" data-action="open-lotacao-msg" title="Gerar mensagem para o servidor">&#128172;</button></div></div>'+
     '</div>';
 
   html += '<div class="section-title">Regularização</div><div class="field-grid">'+
@@ -1295,6 +1307,45 @@ function openAnexoLightbox(dataUrl){
     '</div>';
 }
 function closeLightbox(){ byId('lightbox-root').innerHTML=''; }
+function buildLotacaoMessage(r, lotVal){
+  return 'O(a) servidor(a) '+r.nome+', matrícula nº '+r.cadastro+', consta no relatório de servidores sem carga horária, com lotação registrada no(a) '+(r.orgao||'—')+'. Entretanto, o(a) próprio(a) servidor(a) informa estar atualmente lotado(a) no(a) '+lotVal+'.\nSolicitamos a gentileza de verificar a programação e a situação funcional junto à Unidade Escolar, adotando as providências cabíveis para a devida regularização e atualização das informações.';
+}
+function openLotacaoMessagePopup(){
+  if(!UI.currentRecordId) return;
+  var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+  if(!r) return;
+  var input = byId('f-lotacaoInformada');
+  var lotVal = (input ? input.value : (r.lotacaoInformada||'')).trim();
+  if(!lotVal){ toast('Preencha "Lotação informada pelo servidor" antes de gerar a mensagem.', true); return; }
+  var msg = buildLotacaoMessage(r, lotVal);
+  byId('lightbox-root').innerHTML =
+    '<div class="lightbox-overlay" data-action="close-lightbox">'+
+      '<div class="msg-popup" data-action="stop-prop">'+
+        '<div class="msg-popup-title">Mensagem para '+esc(r.nome)+'</div>'+
+        '<textarea class="msg-popup-text" id="lotacao-msg-text" readonly>'+esc(msg)+'</textarea>'+
+        '<div class="msg-popup-actions">'+
+          '<button class="btn" data-action="close-lightbox">Fechar</button>'+
+          '<button class="btn btn-primary" data-action="copy-lotacao-msg">Copiar mensagem</button>'+
+        '</div>'+
+      '</div>'+
+      '<button class="icon-btn lightbox-close" data-action="close-lightbox" aria-label="Fechar">&#10005;</button>'+
+    '</div>';
+}
+function copyLotacaoMessage(){
+  var ta = byId('lotacao-msg-text');
+  if(!ta) return;
+  function done(){ toast('Mensagem copiada!'); }
+  function fallback(){
+    ta.removeAttribute('readonly'); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('Não foi possível copiar automaticamente. Selecione o texto manualmente.', true); }
+    ta.setAttribute('readonly','');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
+}
 function saveAnexoFromImage(img){
   var maxWidth = 1000, quality = 0.75, attempts = 0;
   function tryOnce(){
@@ -1991,6 +2042,8 @@ function handleDelegatedClick(e){
     }
   }
   else if(action==='close-lightbox') closeLightbox();
+  else if(action==='open-lotacao-msg') openLotacaoMessagePopup();
+  else if(action==='copy-lotacao-msg') copyLotacaoMessage();
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
