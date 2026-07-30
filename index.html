@@ -61,6 +61,13 @@ button{cursor:pointer;}
 .nav-item.active .count{background:rgba(196,146,44,.28);color:#F5E2B4;}
 .sidebar-foot{margin-top:auto;padding:12px 10px 4px;border-top:1px solid rgba(255,255,255,.08);}
 .sync-status{display:flex;gap:8px;align-items:center;font-size:11.5px;color:#7E8FAE;padding:10px 2px 2px;}
+.user-badge{font-size:11.5px;color:#B9C4DC;padding:2px 2px 0;display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.user-badge-name{color:#E8ECF4;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-badge-switch{background:none;border:none;color:var(--gold-500);font-size:11px;cursor:pointer;padding:2px;flex:none;}
+.user-badge-switch:hover{text-decoration:underline;}
+.user-picker-list{display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto;}
+.user-picker-opt{text-align:left;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text-primary);cursor:pointer;}
+.user-picker-opt:hover{background:var(--gold-50);border-color:var(--gold-400);}
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--success-500);flex:none;}
 .sync-dot.off{background:var(--warning-500);}
 
@@ -365,8 +372,9 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="nav-group-label">Sistema</div>
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
+      <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.21</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.22</div>
     </div>
   </nav>
   <div class="main">
@@ -396,8 +404,8 @@ const RAW_DATA = [{"id": "sagp_0001", "cadastro": 92181486, "cadastroSap": 92181
 <script>
 /* ============ CONSTANTS ============ */
 var STORAGE_KEY = 'sagp_records_v1';
-var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Informar à CPG','Em Execução','Regularizado'];
-var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Informar à CPG':'amber','Em Execução':'amber','Regularizado':'green'};
+var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Em Execução','Regularizado'];
+var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Em Execução':'amber','Regularizado':'green'};
 var MEDIDAS = ['Desligamento','Remoção','Relotação'];
 var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
 var TECNICO_TRATATIVA_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
@@ -468,7 +476,7 @@ function seedIfEmpty(){
 }
 function migrateLegacyStatusValues(){
   var touched = [];
-  var LEGACY_STATUS_MAP = {'Medida Definida':'Informar à CPG', 'Em Contato':'Pendente de Análise', 'Contatado via Whatsapp':'Pendente de Análise', 'E-mail enviado ao servidor':'Pendente de Análise', 'Sem comunicação':'Pendente de Análise'};
+  var LEGACY_STATUS_MAP = {'Medida Definida':'Em Execução', 'Informar à CPG':'Em Execução', 'Em Contato':'Pendente de Análise', 'Contatado via Whatsapp':'Pendente de Análise', 'E-mail enviado ao servidor':'Pendente de Análise', 'Sem comunicação':'Pendente de Análise'};
   RECORDS.forEach(function(r){
     var novo = LEGACY_STATUS_MAP[r.statusProcesso];
     if(novo){
@@ -609,12 +617,15 @@ var UI = {
   lastFormacaoImportResult: null,
   lastBloqueioImportResult: null,
   lastFilterChange: null,
-  needsScrollReset: false
+  needsScrollReset: false,
+  currentUserName: null
 };
 
 /* ============ INIT ============ */
 function initApp(){
   wireGlobalEvents();
+  try{ UI.currentUserName = localStorage.getItem('sagp_current_user') || null; }catch(e){}
+  renderUserBadge();
   var fbOk = initFirebase();
   if(fbOk){
     UI_LOADING = true;
@@ -1119,7 +1130,77 @@ function bulkSetStatus(value){
   toast('Status atualizado para '+n+' registro(s).');
 }
 /* ============ FICHA MODAL ============ */
-function openFicha(id){ UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal(); }
+function openFicha(id){
+  var r = RECORDS.find(function(x){ return x.id===id; });
+  if(!r){ UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal(); return; }
+  if(UI.currentUserName && r.responsavel && r.responsavel!==UI.currentUserName){
+    showTakeoverPrompt(r, id);
+    return;
+  }
+  if(UI.currentUserName && !r.responsavel){
+    r.responsavel = UI.currentUserName;
+    r.historico.push({data:todayIso(), texto:'Técnico em Tratativa definido automaticamente como "'+UI.currentUserName+'" ao abrir o caso.'});
+    persist(); syncToFirestore(r);
+  }
+  UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal();
+}
+function showTakeoverPrompt(r, id){
+  byId('lightbox-root').innerHTML =
+    '<div class="lightbox-overlay" data-action="close-lightbox">'+
+      '<div class="msg-popup" data-action="stop-prop" style="max-width:420px">'+
+        '<div class="msg-popup-title">Este caso já tem um técnico</div>'+
+        '<p style="font-size:13px;color:var(--text-secondary);line-height:1.55;margin-bottom:16px">'+
+          'O caso de <b>'+esc(r.nome)+'</b> está sob a responsabilidade de <b>'+esc(r.responsavel)+'</b>. Você pode só dar uma olhada sem mudar nada, ou assumir o caso pra você, <b>'+esc(UI.currentUserName)+'</b>.'+
+        '</p>'+
+        '<div class="msg-popup-actions" style="justify-content:space-between">'+
+          '<button class="btn" data-action="view-only-ficha" data-id="'+esc(id)+'">Só visualizar</button>'+
+          '<button class="btn btn-primary" data-action="takeover-ficha" data-id="'+esc(id)+'">Assumir pra mim</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+function viewOnlyFicha(id){
+  closeLightbox();
+  UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal();
+}
+function takeoverFicha(id){
+  var r = RECORDS.find(function(x){ return x.id===id; });
+  if(!r) return;
+  var oldResp = r.responsavel;
+  r.responsavel = UI.currentUserName;
+  r.historico.push({data:todayIso(), texto:'Técnico em Tratativa alterado de "'+oldResp+'" para "'+UI.currentUserName+'" (assumido ao abrir o caso).'});
+  persist(); syncToFirestore(r);
+  closeLightbox();
+  UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal();
+}
+function renderUserBadge(){
+  var el = byId('user-badge-row');
+  if(!el) return;
+  if(UI.currentUserName){
+    el.innerHTML = '<span class="user-badge-name" title="'+esc(UI.currentUserName)+'">&#128100; '+esc(UI.currentUserName)+'</span><button class="user-badge-switch" data-action="switch-user">trocar</button>';
+  } else {
+    el.innerHTML = '<button class="user-badge-switch" data-action="switch-user">Quem é você?</button>';
+  }
+}
+function openUserSwitcher(){
+  byId('lightbox-root').innerHTML =
+    '<div class="lightbox-overlay" data-action="close-lightbox">'+
+      '<div class="msg-popup" data-action="stop-prop" style="max-width:380px">'+
+        '<div class="msg-popup-title">Quem é você?</div>'+
+        '<div class="user-picker-list">'+
+        TECNICO_TRATATIVA_OPTS.map(function(t){ return '<button type="button" class="user-picker-opt" data-action="set-current-user" data-name="'+esc(t)+'">'+esc(t)+'</button>'; }).join('')+
+        '</div>'+
+      '</div>'+
+      '<button class="icon-btn lightbox-close" data-action="close-lightbox" aria-label="Fechar">&#10005;</button>'+
+    '</div>';
+}
+function setCurrentUser(name){
+  UI.currentUserName = name;
+  try{ localStorage.setItem('sagp_current_user', name); }catch(e){}
+  renderUserBadge();
+  closeLightbox();
+  toast('Você está identificado como '+name+'.');
+}
 function closeModal(){
   if(UI.currentRecordId) flushAutosave(UI.currentRecordId);
   UI.currentRecordId = null;
@@ -2044,6 +2125,10 @@ function handleDelegatedClick(e){
   else if(action==='close-lightbox') closeLightbox();
   else if(action==='open-lotacao-msg') openLotacaoMessagePopup();
   else if(action==='copy-lotacao-msg') copyLotacaoMessage();
+  else if(action==='switch-user') openUserSwitcher();
+  else if(action==='set-current-user') setCurrentUser(el.dataset.name);
+  else if(action==='view-only-ficha') viewOnlyFicha(el.dataset.id);
+  else if(action==='takeover-ficha') takeoverFicha(el.dataset.id);
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
