@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.26</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.27</div>
     </div>
   </nav>
   <div class="main">
@@ -1378,6 +1378,11 @@ function staticField(label, value){
   var v = (value===undefined||value===null||value==='') ? '—' : value;
   return '<div class="field-static"><span class="lbl">'+esc(label)+'</span>'+esc(v)+'</div>';
 }
+function editFuncField(label, field, value, placeholder, type){
+  type = type || 'text';
+  var action = type==='date' ? 'autosave-select' : 'autosave-text';
+  return '<div class="field"><label>'+esc(label)+'</label><input type="'+type+'" id="f-'+field+'" data-action="'+action+'" data-field="'+field+'" value="'+esc(value)+'"'+(placeholder?' placeholder="'+esc(placeholder)+'"':'')+'></div>';
+}
 function tecnicoOptionsHtml(current){
   var opts = getTecnicoOptions().slice();
   if(current && opts.indexOf(current)===-1) opts.push(current);
@@ -1392,13 +1397,14 @@ function renderFichaDados(r, cadCount){
 
   var html = alerts;
   html += '<div class="section-title">Dados funcionais</div><div class="field-grid-3">';
-  html += staticField('NTE', r.nre)+staticField('Município', r.municipio)+staticField('Tipo de servidor', r.tipoServidor)+
-    staticField('Órgão / lotação oficial', r.orgao)+staticField('Código SECUL', r.codsecul)+staticField('Regime', r.regime?r.regime+'h':'')+
-    staticField('Situação especial', r.situacaoEspecial)+staticField('Situação', r.situacao);
+  html += editFuncField('NTE','nre',r.nre)+editFuncField('Município','municipio',r.municipio)+editFuncField('Tipo de servidor','tipoServidor',r.tipoServidor)+
+    editFuncField('Órgão / lotação oficial','orgao',r.orgao)+editFuncField('Código SECUL','codsecul',r.codsecul)+editFuncField('Regime','regime',r.regime,'ex: 20h')+
+    editFuncField('Situação especial','situacaoEspecial',r.situacaoEspecial)+editFuncField('Situação','situacao',r.situacao);
   html += '</div>';
   html += '<div class="field-grid-3" style="margin-top:2px">';
-  html += staticField('Carga horária (QTD)', r.qtd?r.qtd+'h':'')+staticField('Início da situação', fmtDate(r.dataInicio))+staticField('Fim da situação', fmtDate(r.dataFim));
+  html += editFuncField('Carga horária (QTD)','qtd',r.qtd,'ex: 13h')+editFuncField('Início da situação','dataInicio',r.dataInicio,null,'date')+editFuncField('Fim da situação','dataFim',r.dataFim,null,'date');
   html += '</div>';
+  html += '<div class="alert alert-info" style="margin-top:4px;margin-bottom:0"><span class="ic">&#9432;</span><div>Estes dados vêm originalmente da extração NRE/Diário. Editar aqui corrige o registro agora, mas uma futura reimportação da mesma extração pode trazer o valor antigo de volta.</div></div>';
 
   html += '<div class="section-title">Contato e formação</div><div class="field-grid">'+
     '<div class="field" style="grid-column:1/-1">'+
