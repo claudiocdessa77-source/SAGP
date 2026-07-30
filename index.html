@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.27</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.28</div>
     </div>
   </nav>
   <div class="main">
@@ -1163,8 +1163,12 @@ function renderProfissionais(){
   var html = '<div class="prof-frame">';
   html += '<div class="sticky-filters" id="sticky-filters-panel">';
   html += filterBarHtml();
-  html += '<div class="results-count"><b>'+total+'</b> de '+RECORDS.length+' profissionais'+(activeFilters>0?' (filtrado)':'')+
-    (total>0?' &middot; <button data-action="select-all-filtered" style="background:none;border:none;color:var(--info-700);font-size:12.5px;cursor:pointer;padding:0">Selecionar todos os '+total+' filtrados</button>':'')+'</div>';
+  html += '<div class="results-count" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
+    '<span><b>'+total+'</b> de '+RECORDS.length+' profissionais'+(activeFilters>0?' (filtrado)':'')+
+    (total>0?' &middot; <button data-action="select-all-filtered" style="background:none;border:none;color:var(--info-700);font-size:12.5px;cursor:pointer;padding:0">Selecionar todos os '+total+' filtrados</button>':'')+'</span>'+
+    (total>0?'<span style="display:flex;gap:8px"><button class="btn btn-sm" data-action="export-report-excel"><span class="ic">&#8595;</span>Exportar Excel</button>'+
+      '<button class="btn btn-sm" data-action="export-filtered-pdf"><span class="ic">&#128438;</span>Exportar PDF</button></span>':'')+
+    '</div>';
   html += bulkBarHtml();
   html += '</div>';
   html += '<div class="table-wrap'+(total>0?'':' table-wrap-standalone')+'">';
@@ -1804,6 +1808,10 @@ function printReport(){
   window.print();
   setTimeout(function(){ if(h) h.style.display='none'; }, 500);
 }
+function exportFilteredPdf(){
+  navigate('relatorios');
+  setTimeout(function(){ printReport(); }, 250);
+}
 function exportReportExcel(){
   if(typeof XLSX==='undefined'){ toast('Biblioteca de exportação indisponível (sem conexão).', true); return; }
   var filtered = getFiltered();
@@ -2311,6 +2319,7 @@ function handleDelegatedClick(e){
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
   else if(action==='export-report-excel') exportReportExcel();
   else if(action==='print-report') printReport();
+  else if(action==='export-filtered-pdf') exportFilteredPdf();
   else if(action==='export-all-excel') exportAllExcel();
   else if(action==='export-backup-json') exportBackupJson();
   else if(action==='clear-all') clearAllRecords();
