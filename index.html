@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.25</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.26</div>
     </div>
   </nav>
   <div class="main">
@@ -487,7 +487,14 @@ function addTecnicoExtra(nome, senha){
   if(firebaseReady && db){
     db.collection(TECNICOS_CONFIG_COLLECTION).doc(TECNICOS_CONFIG_DOC).set({extra: novaLista}, {merge:true}).then(function(){
       toast('"'+nome+'" adicionado à lista de Técnico em Tratativa.');
-    }).catch(function(err){ console.error(err); toast('Erro ao salvar no servidor. Verifique a internet.', true); });
+    }).catch(function(err){
+      console.error(err);
+      if(err && err.code==='permission-denied'){
+        toast('As regras do Firestore ainda não liberam a coleção "sagp_config". Peça ao Claude o texto atualizado das regras.', true);
+      } else {
+        toast('Erro ao salvar no servidor. Verifique a internet.', true);
+      }
+    });
   } else {
     TECNICO_EXTRA_OPTS = novaLista;
     toast('"'+nome+'" adicionado (salvo apenas neste navegador — Firebase não configurado).');
