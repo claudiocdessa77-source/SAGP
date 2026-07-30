@@ -258,6 +258,8 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold-500);box-shadow:0 0 0 3px var(--gold-50);}
 .field textarea{resize:vertical;min-height:56px;}
 .check-inline{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;color:var(--text-secondary);font-weight:400;cursor:pointer;}
+.quick-contact-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.quick-contact-row .btn{padding:5px 10px;font-size:11.5px;}
 .tel-group{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 @media (max-width:640px){.tel-group{grid-template-columns:1fr;}}
 .check-inline input{flex:none;}
@@ -356,7 +358,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.18</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.19</div>
     </div>
   </nav>
   <div class="main">
@@ -1178,16 +1180,21 @@ function renderFichaDados(r, cadCount){
     '</div>';
 
   html += '<div class="section-title">Regularização</div><div class="field-grid">'+
+    '<div class="field"><label>Técnico em Tratativa</label><select id="f-responsavel" data-action="autosave-select" data-field="responsavel">'+tecnicoOptionsHtml(r.responsavel)+'</select></div>'+
+    '<div class="field"><label>Status do processo</label><select id="f-statusProcesso" data-action="autosave-select" data-field="statusProcesso">'+
+    STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'" '+(r.statusProcesso===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
     '<div class="field"><label>Medida a ser tomada</label><select id="f-medidaTomada" data-action="autosave-select" data-field="medidaTomada"><option value="">Não definida</option>'+
     MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'" '+(r.medidaTomada===m?'selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select></div>'+
     '<div class="field"><label>Bloqueio de pagamento</label><select id="f-bloqueioPagamento" data-action="autosave-select" data-field="bloqueioPagamento"><option value="">Não definido</option>'+
     BLOQUEIO_PAGTO_OPTS.map(function(b){ return '<option value="'+esc(b)+'" '+(r.bloqueioPagamento===b?'selected':'')+'>'+esc(b)+'</option>'; }).join('')+'</select></div>'+
     '<div class="field"><label>Data do bloqueio</label><input type="date" id="f-dataBloqueio" data-action="autosave-select" data-field="dataBloqueio" value="'+esc(r.dataBloqueio)+'"></div>'+
     '<div class="field"><label>Processo SEI</label><input type="text" id="f-processoSei" data-action="autosave-text" data-field="processoSei" value="'+esc(r.processoSei)+'" placeholder="Ex: 00000.000000/2026-00"></div>'+
-    '<div class="field"><label>Status do processo</label><select id="f-statusProcesso" data-action="autosave-select" data-field="statusProcesso">'+
-    STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'" '+(r.statusProcesso===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field"><label>Técnico em Tratativa</label><select id="f-responsavel" data-action="autosave-select" data-field="responsavel">'+tecnicoOptionsHtml(r.responsavel)+'</select></div>'+
-    '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'"></div>'+
+    '<div class="field"><label>Data do último contato</label><input type="date" id="f-dataUltimoContato" data-action="autosave-select" data-field="dataUltimoContato" value="'+esc(r.dataUltimoContato)+'">'+
+    '<div class="quick-contact-row">'+
+      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="telefone" title="Ligar e registrar contato de hoje">&#9742; Telefone</button>'+
+      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="whatsapp" title="Abrir WhatsApp e registrar contato de hoje">&#128172; WhatsApp</button>'+
+      '<button type="button" class="btn btn-sm" data-action="quick-contact" data-channel="email" title="Enviar e-mail e registrar contato de hoje">&#9993; E-mail</button>'+
+    '</div></div>'+
     '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
     '</div>';
 
@@ -1328,6 +1335,30 @@ function handleImagePaste(e){
     }
   }
   toast('Não encontrei uma imagem na área de transferência. Copie um print ou células do Excel como imagem.', true);
+}
+function quickContact(channel){
+  if(!UI.currentRecordId) return;
+  var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+  if(!r) return;
+  var phone = (r.telefone||r.telefone2||r.telefone3||'').replace(/\D/g,'');
+  var url = null, label = '';
+  if(channel==='telefone'){
+    if(!phone){ toast('Nenhum telefone cadastrado para essa pessoa.', true); return; }
+    url = 'tel:'+phone; label = 'Telefone';
+  } else if(channel==='whatsapp'){
+    if(!phone){ toast('Nenhum telefone cadastrado para essa pessoa.', true); return; }
+    url = 'https://wa.me/55'+phone; label = 'WhatsApp';
+  } else if(channel==='email'){
+    if(!r.email){ toast('Nenhum e-mail cadastrado para essa pessoa.', true); return; }
+    url = 'mailto:'+r.email; label = 'E-mail';
+  }
+  if(!url) return;
+  commitAutosave(r.id, 'dataUltimoContato', todayIso());
+  r.historico.push({data:todayIso(), texto:'Contato via '+label+' registrado.'});
+  persist(); syncToFirestore(r);
+  renderModal();
+  try{ window.open(url, '_blank'); }catch(e){ console.warn('SAGP: não foi possível abrir '+label, e); }
+  toast('Contato via '+label+' registrado.');
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -1948,6 +1979,7 @@ function handleDelegatedClick(e){
   else if(action==='modal-tab'){ if(UI.currentRecordId) flushAutosave(UI.currentRecordId); UI.modalTab = el.dataset.tab; renderModal(); }
   else if(action==='add-historico') addHistorico(el.dataset.id);
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
+  else if(action==='quick-contact') quickContact(el.dataset.channel);
   else if(action==='remove-anexo'){
     if(UI.currentRecordId){ commitAutosave(UI.currentRecordId, 'anexoImagem', ''); renderModal(); toast('Print removido.'); }
   }
