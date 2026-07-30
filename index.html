@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.24</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.25</div>
     </div>
   </nav>
   <div class="main">
@@ -413,7 +413,10 @@ var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Em Execução
 var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Em Execução':'amber','Regularizado':'green'};
 var MEDIDAS = ['Desligamento','Remoção','Relotação'];
 var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
-var TECNICO_TRATATIVA_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
+var TECNICO_BASE_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
+var TECNICO_EXTRA_OPTS = [];
+function getTecnicoOptions(){ return TECNICO_BASE_OPTS.concat(TECNICO_EXTRA_OPTS); }
+var ADMIN_ACTION_PASSWORD = 'Lore_2001';
 var MEDIDA_COLOR = {'Desligamento':'red','Bloqueio':'amber','Remoção':'purple','Relotação':'blue'};
 var FILTER_DEFS = [
   {key:'nre', label:'NTE'},
@@ -457,8 +460,38 @@ function initFirebase(){
     catch(e){ console.warn('SAGP: enablePersistence indisponível nesta versão do SDK.'); }
     firebaseReady = true;
     initAuth();
+    startTecnicosSync();
     return true;
   }catch(e){ console.error('SAGP: erro ao iniciar Firebase', e); return false; }
+}
+/* ============ TÉCNICOS EXTRAS (cadastrados pela equipe, além dos 11 originais) ============
+   Guardados num documento próprio no Firestore, sincronizado em tempo real entre todas as
+   máquinas. Cadastro de um novo nome exige a senha administrativa. */
+var TECNICOS_CONFIG_COLLECTION = 'sagp_config';
+var TECNICOS_CONFIG_DOC = 'tecnicos';
+function startTecnicosSync(){
+  db.collection(TECNICOS_CONFIG_COLLECTION).doc(TECNICOS_CONFIG_DOC).onSnapshot(function(doc){
+    if(doc.exists && Array.isArray(doc.data().extra)){
+      TECNICO_EXTRA_OPTS = doc.data().extra;
+      renderUserBadge();
+      if(UI.currentRecordId) renderModal();
+    }
+  }, function(err){ console.warn('SAGP: erro ao sincronizar técnicos extras', err); });
+}
+function addTecnicoExtra(nome, senha){
+  if(senha !== ADMIN_ACTION_PASSWORD){ toast('Senha incorreta.', true); return; }
+  nome = (nome||'').trim();
+  if(!nome){ toast('Digite um nome.', true); return; }
+  if(getTecnicoOptions().indexOf(nome)!==-1){ toast('Esse nome já está cadastrado.', true); return; }
+  var novaLista = TECNICO_EXTRA_OPTS.concat([nome]);
+  if(firebaseReady && db){
+    db.collection(TECNICOS_CONFIG_COLLECTION).doc(TECNICOS_CONFIG_DOC).set({extra: novaLista}, {merge:true}).then(function(){
+      toast('"'+nome+'" adicionado à lista de Técnico em Tratativa.');
+    }).catch(function(err){ console.error(err); toast('Erro ao salvar no servidor. Verifique a internet.', true); });
+  } else {
+    TECNICO_EXTRA_OPTS = novaLista;
+    toast('"'+nome+'" adicionado (salvo apenas neste navegador — Firebase não configurado).');
+  }
 }
 /* ============ LOGIN (Firebase Authentication) — opcional, não bloqueia o uso do sistema.
    Só passa a valer de verdade quando as regras do Firestore forem trocadas para exigir
@@ -470,7 +503,7 @@ function slugifyName(name){
   return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]+/g,'.').replace(/^\.+|\.+$/g,'');
 }
 var EMAIL_TO_NAME = {};
-TECNICO_TRATATIVA_OPTS.forEach(function(name){ EMAIL_TO_NAME[slugifyName(name)+AUTH_DOMAIN_SUFFIX] = name; });
+TECNICO_BASE_OPTS.forEach(function(name){ EMAIL_TO_NAME[slugifyName(name)+AUTH_DOMAIN_SUFFIX] = name; });
 function initAuth(){
   if(typeof firebase==='undefined' || !firebase.auth) return;
   try{
@@ -637,6 +670,9 @@ function clearFirestoreCollection(ids){
 function clearAllRecords(){
   var n = RECORDS.length;
   if(n === 0){ toast('A base já está vazia.'); return; }
+  var senha = prompt('Esta é uma ação restrita. Digite a senha para continuar:');
+  if(senha === null) return;
+  if(senha !== ADMIN_ACTION_PASSWORD){ toast('Senha incorreta — nada foi apagado.', true); return; }
   var scope = firebaseReady ? 'do banco COMPARTILHADO (afeta todas as máquinas conectadas)' : 'deste navegador';
   var typed = prompt('Isso vai apagar TODOS os '+n+' registros '+scope+'. Não pode ser desfeito.\n\nSe ainda não exportou um backup, cancele e exporte primeiro (Exportar base completa ou Backup .json).\n\nPara confirmar a exclusão, digite ZERAR abaixo:');
   if(typed !== 'ZERAR'){ toast('Operação cancelada — nada foi apagado.'); return; }
@@ -1285,7 +1321,7 @@ function openUserSwitcher(){
       '<div class="msg-popup" data-action="stop-prop" style="max-width:380px">'+
         '<div class="msg-popup-title">Quem é você?</div>'+
         '<div class="user-picker-list">'+
-        TECNICO_TRATATIVA_OPTS.map(function(t){ return '<button type="button" class="user-picker-opt" data-action="set-current-user" data-name="'+esc(t)+'">'+esc(t)+'</button>'; }).join('')+
+        getTecnicoOptions().map(function(t){ return '<button type="button" class="user-picker-opt" data-action="set-current-user" data-name="'+esc(t)+'">'+esc(t)+'</button>'; }).join('')+
         '</div>'+
       '</div>'+
       '<button class="icon-btn lightbox-close" data-action="close-lightbox" aria-label="Fechar">&#10005;</button>'+
@@ -1336,7 +1372,7 @@ function staticField(label, value){
   return '<div class="field-static"><span class="lbl">'+esc(label)+'</span>'+esc(v)+'</div>';
 }
 function tecnicoOptionsHtml(current){
-  var opts = TECNICO_TRATATIVA_OPTS.slice();
+  var opts = getTecnicoOptions().slice();
   if(current && opts.indexOf(current)===-1) opts.push(current);
   var html = '<option value="">Não definido</option>';
   html += opts.map(function(t){ return '<option value="'+esc(t)+'" '+(current===t?'selected':'')+'>'+esc(t)+'</option>'; }).join('');
@@ -1855,9 +1891,15 @@ function renderImportar(){
       '</div></div>';
   }
   html += '</div>';
+  html += '<div class="card" style="margin-top:16px">'+
+    '<div class="card-title">Cadastrar técnico em "Quem é você"</div>'+
+    '<div class="card-sub">Adiciona um nome novo à lista de Técnico em Tratativa, disponível em toda a equipe. Ação restrita — exige senha.</div>'+
+    '<button class="btn btn-primary" data-action="add-tecnico"><span class="ic">&#128100;</span>Cadastrar novo técnico</button>'+
+    (TECNICO_EXTRA_OPTS.length ? '<div style="margin-top:10px;font-size:12px;color:var(--text-secondary)">Cadastrados além dos 11 originais: '+esc(TECNICO_EXTRA_OPTS.join(', '))+'</div>' : '')+
+    '</div>';
   html += '<div class="card" style="margin-top:16px;border-color:var(--danger-100)">'+
     '<div class="card-title" style="color:var(--danger-700)">Zona de risco</div>'+
-    '<div class="card-sub">Apaga TODOS os registros'+(firebaseReady?' do banco compartilhado (afeta todas as máquinas conectadas)':' deste navegador')+' de uma vez — use antes de importar uma base totalmente nova que deve substituir a atual, não complementá-la. Registros importados normalmente (aba ao lado) são somados/atualizados, não apagam nada.</div>'+
+    '<div class="card-sub">Apaga TODOS os registros'+(firebaseReady?' do banco compartilhado (afeta todas as máquinas conectadas)':' deste navegador')+' de uma vez — use antes de importar uma base totalmente nova que deve substituir a atual, não complementá-la. Registros importados normalmente (aba ao lado) são somados/atualizados, não apagam nada. Ação restrita — exige senha.</div>'+
     '<button class="btn btn-danger" data-action="clear-all"><span class="ic">&#10005;</span>Zerar todos os registros ('+RECORDS.length+')</button>'+
     '</div>';
   return html;
@@ -2259,6 +2301,13 @@ function handleDelegatedClick(e){
   else if(action==='export-all-excel') exportAllExcel();
   else if(action==='export-backup-json') exportBackupJson();
   else if(action==='clear-all') clearAllRecords();
+  else if(action==='add-tecnico'){
+    var nomeNovo = prompt('Nome do novo técnico (aparecerá em "Quem é você" e em "Técnico em Tratativa"):');
+    if(nomeNovo===null || !nomeNovo.trim()) return;
+    var senhaNovo = prompt('Senha para confirmar o cadastro:');
+    if(senhaNovo===null) return;
+    addTecnicoExtra(nomeNovo, senhaNovo);
+  }
 }
 function handleDelegatedChange(e){
   var el = e.target.closest && e.target.closest('[data-action]');
