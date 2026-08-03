@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.30</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.31</div>
     </div>
   </nav>
   <div class="main">
@@ -1481,7 +1481,7 @@ function renderFichaDados(r, cadCount){
     contactToggleRow(r, 'tent')+'</div>'+
     '<div class="field"><label>Contato com sucesso em</label><input type="date" id="f-dataContatoSucesso" data-action="autosave-select" data-field="dataContatoSucesso" value="'+esc(r.dataContatoSucesso)+'">'+
     contactToggleRow(r, 'suc')+'</div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
+    '<div class="field" style="grid-column:1/-1"><label style="display:flex;align-items:center;justify-content:space-between">Observações<button type="button" class="btn btn-sm" data-action="add-observacao-entry" style="font-size:11px;padding:3px 9px">+ Nova observação (hoje)</button></label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
     '</div>';
 
   html += '<div class="section-title">Anexo (print de tela)</div>';
@@ -1694,6 +1694,21 @@ function toggleContactFlag(field){
   if(!r) return;
   commitAutosave(r.id, field, !r[field]);
   renderModal();
+}
+function addObservacaoEntry(){
+  if(!UI.currentRecordId) return;
+  var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
+  if(!r) return;
+  var dateLabel = fmtDate(todayIso());
+  var prefix = '['+dateLabel+']\n';
+  var existing = r.observacoes || '';
+  var newVal = existing ? (prefix+'\n'+existing) : prefix;
+  commitAutosave(r.id, 'observacoes', newVal);
+  renderModal();
+  setTimeout(function(){
+    var ta = byId('f-observacoes');
+    if(ta){ ta.focus(); var pos = prefix.length; ta.setSelectionRange(pos,pos); }
+  }, 30);
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -2335,6 +2350,7 @@ function handleDelegatedClick(e){
   else if(action==='add-historico') addHistorico(el.dataset.id);
   else if(action==='delete-ficha') deleteFicha(el.dataset.id);
   else if(action==='toggle-contact-flag') toggleContactFlag(el.dataset.field);
+  else if(action==='add-observacao-entry') addObservacaoEntry();
   else if(action==='remove-anexo'){
     if(UI.currentRecordId){
       var idx = parseInt(el.dataset.idx,10);
