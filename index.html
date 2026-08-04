@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.32</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.33</div>
     </div>
   </nav>
   <div class="main">
@@ -1713,6 +1713,33 @@ function handleObservacoesEnter(e, ta){
   ta.setSelectionRange(newPos,newPos);
   if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, 'observacoes', ta.value.trim());
 }
+/* Trechos "DD/MM/AAAA - " no início do texto ou logo após uma quebra de linha são a
+   máscara de data — protegidos contra apagar, sobrescrever, recortar ou colar por cima. */
+function getObservacoesProtectedRanges(value){
+  var ranges = [];
+  var re = /(^|\n)(\d{2}\/\d{2}\/\d{4} - )/g;
+  var m;
+  while((m = re.exec(value)) !== null){
+    var start = m.index + m[1].length;
+    ranges.push([start, start+m[2].length]);
+  }
+  return ranges;
+}
+function handleObservacoesBeforeInput(e, ta){
+  var ranges = getObservacoesProtectedRanges(ta.value);
+  if(!ranges.length) return;
+  var s = ta.selectionStart, en = ta.selectionEnd;
+  var type = e.inputType||'';
+  if(s===en){
+    if(type==='deleteContentBackward'){
+      for(var i=0;i<ranges.length;i++){ if(s-1>=ranges[i][0] && s-1<ranges[i][1]){ e.preventDefault(); return; } }
+    } else if(type.indexOf('delete')===0){
+      for(var i=0;i<ranges.length;i++){ if(s>=ranges[i][0] && s<ranges[i][1]){ e.preventDefault(); return; } }
+    }
+  } else {
+    for(var i=0;i<ranges.length;i++){ var r=ranges[i]; if(s<r[1] && en>r[0]){ e.preventDefault(); return; } }
+  }
+}
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r) return;
@@ -2303,6 +2330,7 @@ function wireGlobalEvents(){
   document.addEventListener('input', handleDelegatedInput);
   document.addEventListener('focusin', function(e){ if(e.target && e.target.id==='f-observacoes') handleObservacoesFocus(e.target); });
   document.addEventListener('keydown', function(e){ if(e.target && e.target.id==='f-observacoes' && e.key==='Enter' && !e.shiftKey) handleObservacoesEnter(e, e.target); });
+  document.addEventListener('beforeinput', function(e){ if(e.target && e.target.id==='f-observacoes') handleObservacoesBeforeInput(e, e.target); });
   document.addEventListener('paste', handleImagePaste);
   document.addEventListener('dragover', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz){ e.preventDefault(); dz.classList.add('drag'); } });
   document.addEventListener('dragleave', function(e){ var dz=e.target.closest && e.target.closest('.dropzone'); if(dz) dz.classList.remove('drag'); });
