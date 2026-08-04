@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.33</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.34</div>
     </div>
   </nav>
   <div class="main">
@@ -409,8 +409,8 @@ const RAW_DATA = [{"id": "sagp_0001", "cadastro": 92181486, "cadastroSap": 92181
 <script>
 /* ============ CONSTANTS ============ */
 var STORAGE_KEY = 'sagp_records_v1';
-var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Em Execução','Regularizado'];
-var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Em Execução':'amber','Regularizado':'green'};
+var STATUS_PROCESSO = ['Pendente de Análise','Contato Realizado','Em Execução','Finalizado'];
+var STATUS_COLOR = {'Pendente de Análise':'gray','Contato Realizado':'blue','Em Execução':'amber','Finalizado':'green'};
 var MEDIDAS = ['Desligamento','Remoção','Relotação','Suspensão de Pagamento'];
 var BLOQUEIO_PAGTO_OPTS = ['Solicitar Bloqueio','Bloqueado','Não bloqueado'];
 var TECNICO_BASE_OPTS = ['Teresa Cristina','Talita Soledade','Tânia Passos','Jorge Sacramento','Daiane Mota','Tainá Soledade','Ana Patrícia Silva','Rebeca Oliveira','Cristina Câmara','Alexandre Campelo','Manoel Vidal'];
@@ -596,7 +596,7 @@ function seedIfEmpty(){
 }
 function migrateLegacyStatusValues(){
   var touched = [];
-  var LEGACY_STATUS_MAP = {'Medida Definida':'Em Execução', 'Informar à CPG':'Em Execução', 'Em Contato':'Pendente de Análise', 'Contatado via Whatsapp':'Pendente de Análise', 'E-mail enviado ao servidor':'Pendente de Análise', 'Sem comunicação':'Pendente de Análise'};
+  var LEGACY_STATUS_MAP = {'Medida Definida':'Em Execução', 'Informar à CPG':'Em Execução', 'Em Contato':'Pendente de Análise', 'Contatado via Whatsapp':'Pendente de Análise', 'E-mail enviado ao servidor':'Pendente de Análise', 'Sem comunicação':'Pendente de Análise', 'Regularizado':'Finalizado'};
   RECORDS.forEach(function(r){
     var novo = LEGACY_STATUS_MAP[r.statusProcesso];
     if(novo){
@@ -860,7 +860,7 @@ function toast(msg, isError){
 }
 
 /* ============ DERIVED HELPERS ============ */
-function isIrregular(r){ return r.statusProcesso !== 'Regularizado'; }
+function isIrregular(r){ return r.statusProcesso !== 'Finalizado'; }
 function needsAdminClosure(r){ return r.situacao === 'FALECIDO' || r.situacao === 'APOSENTADO'; }
 function hasContact(r){ return !!(r.telefone && String(r.telefone).trim()) || !!(r.telefone2 && String(r.telefone2).trim()) || !!(r.telefone3 && String(r.telefone3).trim()) || !!(r.email && String(r.email).trim()); }
 function buildCadastroCountMap(){ var m = new Map(); RECORDS.forEach(function(r){ var k = (r.nome||'')+'|'+r.cadastro; m.set(k, (m.get(k)||0)+1); }); return m; }
@@ -993,12 +993,12 @@ function toggleQuickFlag(flag){
 }
 function drillKPI(type){
   goFiltered(function(f){
-    if(type==='irregular'){ f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Regularizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Em situação irregular'}; }
-    else if(type==='regularizado'){ f.statusProcesso.clear(); f.statusProcesso.add('Regularizado'); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Regularizado'}; }
+    if(type==='irregular'){ f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Finalizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Em situação irregular'}; }
+    else if(type==='regularizado'){ f.statusProcesso.clear(); f.statusProcesso.add('Finalizado'); UI.lastFilterChange={field:'statusProcesso', label:'Status do processo', value:'Finalizado'}; }
     else if(type==='semMedida'){ f.medidaTomada.clear(); f.medidaTomada.add('(Não definida)'); UI.lastFilterChange={field:'medidaTomada', label:'Medida', value:'Não definida'}; }
     else if(type==='semContato'){ f.quickFlags.add('semEmail'); f.quickFlags.add('semTelefone'); UI.lastFilterChange={field:null, label:'Indicador', value:'Sem e-mail e sem telefone'}; }
     else if(type==='redaDeslig'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('REDA DESLIGAMENTO'); UI.lastFilterChange={field:'situacaoEspecial', label:'Situação especial', value:'REDA DESLIGAMENTO'}; }
-    else if(type==='redaDesligPendente'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('REDA DESLIGAMENTO'); f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Regularizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:null, label:'Indicador', value:'REDA desligamento pendente'}; }
+    else if(type==='redaDesligPendente'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('REDA DESLIGAMENTO'); f.statusProcesso.clear(); STATUS_PROCESSO.filter(function(s){return s!=='Finalizado';}).forEach(function(s){f.statusProcesso.add(s);}); UI.lastFilterChange={field:null, label:'Indicador', value:'REDA desligamento pendente'}; }
     else if(type==='semFrequencia'){ f.situacaoEspecial.clear(); f.situacaoEspecial.add('SEM FREQUÊNCIA NA UEE'); UI.lastFilterChange={field:'situacaoEspecial', label:'Situação especial', value:'SEM FREQUÊNCIA NA UEE'}; }
     else if(type==='baixaAdm'){ f.situacao.clear(); f.situacao.add('FALECIDO'); f.situacao.add('APOSENTADO'); UI.lastFilterChange={field:null, label:'Situação', value:'Falecido ou aposentado'}; }
   });
@@ -1167,7 +1167,7 @@ function renderDashboard(){
   html += '<div class="grid-kpi">';
   html += kpiCard('total','Total de profissionais', k.total, 'gray', activeFilters>0?'Dentro do filtro atual':'Toda a base monitorada');
   html += kpiCard('irregular','Em situação irregular', k.irregular, 'red', pct(k.irregular,k.total)+'% do total — requer ação');
-  html += kpiCard('regularizado','Regularizados', k.regularizado, 'green', pct(k.regularizado,k.total)+'% do total');
+  html += kpiCard('regularizado','Finalizados', k.regularizado, 'green', pct(k.regularizado,k.total)+'% do total');
   html += kpiCard('semMedida','Sem medida definida', k.semMedida, 'amber', 'Aguardando decisão da equipe');
   html += kpiCard('semContato','Sem contato registrado', k.semContato, 'amber', 'Sem telefone e sem e-mail cadastrados');
   html += kpiCard('redaDesligPendente','REDA desligamento pendente', k.redaDesligPendente, 'red', 'de '+k.redaDeslig+' no total já sinalizados');
@@ -1866,7 +1866,7 @@ function renderRelatorios(){
     '<div class="stat-inline">'+
     '<div class="si"><div class="si-val">'+filtered.length+'</div><div class="si-lbl">Total selecionado</div></div>'+
     '<div class="si"><div class="si-val" style="color:var(--danger-700)">'+k.irregular+'</div><div class="si-lbl">Em situação irregular</div></div>'+
-    '<div class="si"><div class="si-val" style="color:var(--success-700)">'+k.regularizado+'</div><div class="si-lbl">Regularizados</div></div>'+
+    '<div class="si"><div class="si-val" style="color:var(--success-700)">'+k.regularizado+'</div><div class="si-lbl">Finalizados</div></div>'+
     '<div class="si"><div class="si-val">'+k.semMedida+'</div><div class="si-lbl">Sem medida definida</div></div>'+
     '<div class="si"><div class="si-val">'+(new Set(filtered.map(function(r){return r.nre;}))).size+'</div><div class="si-lbl">NTEs envolvidos</div></div>'+
     '<div class="si"><div class="si-val">'+(new Set(filtered.map(function(r){return r.orgao;}))).size+'</div><div class="si-lbl">Unidades envolvidas</div></div>'+
