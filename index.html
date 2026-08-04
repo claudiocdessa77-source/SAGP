@@ -378,7 +378,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.34</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.35</div>
     </div>
   </nav>
   <div class="main">
@@ -1702,26 +1702,53 @@ function handleObservacoesFocus(ta){
     ta.setSelectionRange(prefix.length, prefix.length);
   }
 }
+/* Uma linha "precisa de assinatura" quando já tem conteúdo digitado (além da data)
+   e ainda não termina com "(Nome)" de ninguém. */
+function observacoesLineNeedsSignature(lineContent){
+  var semData = lineContent.replace(/^\d{2}\/\d{2}\/\d{4} - /, '');
+  if(!semData.trim()) return false;
+  if(/ \([^)\n]+\)\s*$/.test(lineContent)) return false;
+  return true;
+}
 function handleObservacoesEnter(e, ta){
   e.preventDefault();
   var pos = ta.selectionStart;
-  var insert = '\n'+fmtDate(todayIso())+' - ';
   var before = ta.value.slice(0,pos);
   var after = ta.value.slice(ta.selectionEnd);
+  var lineStart = before.lastIndexOf('\n')+1;
+  var currentLine = before.slice(lineStart);
+  var insert = '';
+  if(UI.currentUserName && observacoesLineNeedsSignature(currentLine)){
+    insert += ' ('+UI.currentUserName+')';
+  }
+  insert += '\n'+fmtDate(todayIso())+' - ';
   ta.value = before+insert+after;
   var newPos = pos+insert.length;
   ta.setSelectionRange(newPos,newPos);
   if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, 'observacoes', ta.value.trim());
 }
-/* Trechos "DD/MM/AAAA - " no início do texto ou logo após uma quebra de linha são a
-   máscara de data — protegidos contra apagar, sobrescrever, recortar ou colar por cima. */
+function handleObservacoesBlur(ta){
+  var value = ta.value;
+  if(!value || !UI.currentUserName) return;
+  var lastLineStart = value.lastIndexOf('\n')+1;
+  var lastLine = value.slice(lastLineStart);
+  if(!observacoesLineNeedsSignature(lastLine)) return;
+  ta.value = value+' ('+UI.currentUserName+')';
+  if(UI.currentRecordId) scheduleAutosave(UI.currentRecordId, 'observacoes', ta.value.trim());
+}
+/* Trechos "DD/MM/AAAA - " no início de cada linha e " (Nome)" no final de cada linha
+   já escrita são a máscara — protegidos contra apagar, sobrescrever, recortar ou colar por cima. */
 function getObservacoesProtectedRanges(value){
   var ranges = [];
-  var re = /(^|\n)(\d{2}\/\d{2}\/\d{4} - )/g;
+  var reDate = /(^|\n)(\d{2}\/\d{2}\/\d{4} - )/g;
   var m;
-  while((m = re.exec(value)) !== null){
+  while((m = reDate.exec(value)) !== null){
     var start = m.index + m[1].length;
     ranges.push([start, start+m[2].length]);
+  }
+  var reName = /( \([^)\n]+\))(?=\n|$)/g;
+  while((m = reName.exec(value)) !== null){
+    ranges.push([m.index, m.index+m[1].length]);
   }
   return ranges;
 }
@@ -2329,6 +2356,7 @@ function wireGlobalEvents(){
   document.addEventListener('change', handleDelegatedChange);
   document.addEventListener('input', handleDelegatedInput);
   document.addEventListener('focusin', function(e){ if(e.target && e.target.id==='f-observacoes') handleObservacoesFocus(e.target); });
+  document.addEventListener('focusout', function(e){ if(e.target && e.target.id==='f-observacoes') handleObservacoesBlur(e.target); });
   document.addEventListener('keydown', function(e){ if(e.target && e.target.id==='f-observacoes' && e.key==='Enter' && !e.shiftKey) handleObservacoesEnter(e, e.target); });
   document.addEventListener('beforeinput', function(e){ if(e.target && e.target.id==='f-observacoes') handleObservacoesBeforeInput(e, e.target); });
   document.addEventListener('paste', handleImagePaste);
