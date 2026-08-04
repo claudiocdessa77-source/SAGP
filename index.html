@@ -379,7 +379,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.36</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.37</div>
     </div>
   </nav>
   <div class="main">
@@ -636,6 +636,25 @@ function migrateLegacyAnexo(){
   });
   if(touched.length){ persist(); syncToFirestore(touched); }
 }
+/* Os campos de substituição foram lançados com nomes trocados (matrícula/nte/município/
+   código/unidade eram do "substituto", mas na verdade descrevem a pessoa que o profissional
+   desta ficha vai substituir). Move os valores já digitados para os nomes corretos. */
+function migrateLegacySubstituicao(){
+  var touched = [];
+  var MAP = {substitutoMatricula:'substituidoMatricula', substitutoNte:'substituidoNte', substitutoMunicipio:'substituidoMunicipio', substitutoCodigo:'substituidoCodigo', substitutoUnidadeEscolar:'substituidoUnidadeEscolar'};
+  RECORDS.forEach(function(r){
+    var changed = false;
+    Object.keys(MAP).forEach(function(oldKey){
+      if(r[oldKey] !== undefined){
+        if(r[oldKey] && !r[MAP[oldKey]]) r[MAP[oldKey]] = r[oldKey];
+        delete r[oldKey];
+        changed = true;
+      }
+    });
+    if(changed){ touched.push(r); }
+  });
+  if(touched.length){ persist(); syncToFirestore(touched); }
+}
 function startSync(){
   db.collection(FIRESTORE_COLLECTION).onSnapshot(function(snapshot){
     var docs = [];
@@ -647,6 +666,7 @@ function startSync(){
     StorageAdapter.save(RECORDS);
     migrateLegacyStatusValues();
     migrateLegacyAnexo();
+    migrateLegacySubstituicao();
     render();
   }, function(err){
     console.error('SAGP: erro no listener do Firestore', err);
@@ -796,6 +816,7 @@ function initApp(){
     }
     migrateLegacyStatusValues();
     migrateLegacyAnexo();
+    migrateLegacySubstituicao();
     updateSyncStatus('off');
   }
   navigate('dashboard');
@@ -1449,18 +1470,21 @@ function editFuncField(label, field, value, placeholder, type){
   return '<div class="field"><label>'+esc(label)+'</label><input type="'+type+'" id="f-'+field+'" data-action="'+action+'" data-field="'+field+'" value="'+esc(value)+'"'+(placeholder?' placeholder="'+esc(placeholder)+'"':'')+'></div>';
 }
 function renderSubstitutoFields(r){
-  var nteNum = normNteNum(r.substitutoNte);
+  var nteNum = normNteNum(r.substituidoNte);
   var municipioOpts = nteNum!==null ? getMunicipiosForNte(nteNum) : [];
-  var ueeList = (nteNum!==null && r.substitutoMunicipio) ? getUeesForMunicipio(nteNum, normMunicipioName(r.substitutoMunicipio)) : [];
+  var ueeList = (nteNum!==null && r.substituidoMunicipio) ? getUeesForMunicipio(nteNum, normMunicipioName(r.substituidoMunicipio)) : [];
   var html = '<div class="field-grid" style="background:var(--gold-50);padding:12px 14px;border-radius:10px;margin-top:-2px;margin-bottom:14px">'+
-    '<div class="field"><label>Matrícula do substituto</label><input type="text" id="f-substitutoMatricula" data-action="autosave-text" data-field="substitutoMatricula" value="'+esc(r.substitutoMatricula)+'" placeholder="Cadastro do substituto"></div>'+
-    '<div class="field"><label>Código SECUL</label><input type="text" id="f-substitutoCodigo" data-action="autosave-text" data-field="substitutoCodigo" value="'+esc(r.substitutoCodigo)+'" placeholder="Preenchido ao escolher a unidade"></div>'+
-    '<div class="field"><label>NTE</label><select id="f-substitutoNte" data-action="select-substituto-nte"><option value="">Selecione...</option>'+
-    uniqueOptions('nre').map(function(n){ return '<option value="'+esc(n)+'" '+(r.substitutoNte===n?'selected':'')+'>'+esc(n)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field"><label>Município</label><select id="f-substitutoMunicipio" data-action="select-substituto-municipio" '+(!municipioOpts.length?'disabled':'')+'><option value="">'+(municipioOpts.length?'Selecione...':'Escolha o NTE primeiro')+'</option>'+
-    municipioOpts.map(function(m){ return '<option value="'+esc(m)+'" '+(normMunicipioName(r.substitutoMunicipio)===m?'selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select></div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Unidade escolar</label><select id="f-substitutoUnidadeEscolar" data-action="select-substituto-uee" '+(!ueeList.length?'disabled':'')+'><option value="">'+(ueeList.length?'Selecione...':'Escolha o município primeiro')+'</option>'+
-    ueeList.map(function(u){ return '<option value="'+esc(u[0])+'" data-cod="'+esc(u[1]||'')+'" '+(r.substitutoUnidadeEscolar===u[0]?'selected':'')+'>'+esc(u[0])+'</option>'; }).join('')+'</select></div>'+
+    '<div class="alert alert-info" style="grid-column:1/-1;margin:0 0 4px"><span class="ic">&#9432;</span><div>Dados da pessoa que este profissional vai substituir.</div></div>'+
+    '<div class="field"><label>Data da substituição</label><input type="date" id="f-substitutoData" data-action="autosave-select" data-field="substitutoData" value="'+esc(r.substitutoData)+'"></div>'+
+    '<div class="field"><label>Matrícula do substituído</label><input type="text" id="f-substituidoMatricula" data-action="autosave-text" data-field="substituidoMatricula" value="'+esc(r.substituidoMatricula)+'" placeholder="Cadastro de quem será substituído"></div>'+
+    '<div class="field"><label>Nome do substituído</label><input type="text" id="f-substituidoNome" data-action="autosave-text" data-field="substituidoNome" value="'+esc(r.substituidoNome)+'" placeholder="Nome de quem será substituído"></div>'+
+    '<div class="field"><label>Código SECUL</label><input type="text" id="f-substituidoCodigo" data-action="autosave-text" data-field="substituidoCodigo" value="'+esc(r.substituidoCodigo)+'" placeholder="Preenchido ao escolher a unidade"></div>'+
+    '<div class="field"><label>NTE</label><select id="f-substituidoNte" data-action="select-substituto-nte"><option value="">Selecione...</option>'+
+    uniqueOptions('nre').map(function(n){ return '<option value="'+esc(n)+'" '+(r.substituidoNte===n?'selected':'')+'>'+esc(n)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field"><label>Município</label><select id="f-substituidoMunicipio" data-action="select-substituto-municipio" '+(!municipioOpts.length?'disabled':'')+'><option value="">'+(municipioOpts.length?'Selecione...':'Escolha o NTE primeiro')+'</option>'+
+    municipioOpts.map(function(m){ return '<option value="'+esc(m)+'" '+(normMunicipioName(r.substituidoMunicipio)===m?'selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field" style="grid-column:1/-1"><label>Unidade escolar</label><select id="f-substituidoUnidadeEscolar" data-action="select-substituto-uee" '+(!ueeList.length?'disabled':'')+'><option value="">'+(ueeList.length?'Selecione...':'Escolha o município primeiro')+'</option>'+
+    ueeList.map(function(u){ return '<option value="'+esc(u[0])+'" data-cod="'+esc(u[1]||'')+'" '+(r.substituidoUnidadeEscolar===u[0]?'selected':'')+'>'+esc(u[0])+'</option>'; }).join('')+'</select></div>'+
     '</div>';
   return html;
 }
@@ -1881,7 +1905,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoMatricula:'', substitutoNte:'', substitutoMunicipio:'', substitutoCodigo:'', substitutoUnidadeEscolar:'', statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -1933,16 +1957,18 @@ function renderSubstituicoes(){
   }
   html += '<div class="results-count"><b>'+lista.length+'</b> substituição'+(lista.length===1?'':'ões')+' registrada'+(lista.length===1?'':'s')+'</div>';
   html += '<div class="table-wrap"><table><thead><tr>'+
-    '<th>PROFISSIONAL SUBSTITUÍDO</th><th>MATRÍCULA SUBSTITUTO</th><th>NTE</th><th>MUNICÍPIO</th><th>CÓDIGO</th><th>UNIDADE ESCOLAR</th><th></th>'+
+    '<th>PROFISSIONAL SUBSTITUTO</th><th>DATA</th><th>MATRÍCULA SUBSTITUÍDO</th><th>NOME SUBSTITUÍDO</th><th>NTE</th><th>MUNICÍPIO</th><th>CÓDIGO</th><th>UNIDADE ESCOLAR</th><th></th>'+
     '</tr></thead><tbody>';
   lista.forEach(function(r){
     html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer">'+
       '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+' · '+esc(r.orgao)+'</div></td>'+
-      '<td>'+esc(r.substitutoMatricula||'—')+'</td>'+
-      '<td>'+esc(r.substitutoNte||'—')+'</td>'+
-      '<td>'+esc(r.substitutoMunicipio||'—')+'</td>'+
-      '<td>'+esc(r.substitutoCodigo||'—')+'</td>'+
-      '<td>'+esc(r.substitutoUnidadeEscolar||'—')+'</td>'+
+      '<td>'+esc(fmtDate(r.substitutoData)||'—')+'</td>'+
+      '<td>'+esc(r.substituidoMatricula||'—')+'</td>'+
+      '<td>'+esc(r.substituidoNome||'—')+'</td>'+
+      '<td>'+esc(r.substituidoNte||'—')+'</td>'+
+      '<td>'+esc(r.substituidoMunicipio||'—')+'</td>'+
+      '<td>'+esc(r.substituidoCodigo||'—')+'</td>'+
+      '<td>'+esc(r.substituidoUnidadeEscolar||'—')+'</td>'+
       '<td><button class="icon-btn" data-action="open-ficha" data-id="'+esc(r.id)+'" aria-label="Abrir ficha">&#8250;</button></td>'+
       '</tr>';
   });
@@ -2163,7 +2189,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoMatricula:'', substitutoNte:'', substitutoMunicipio:'', substitutoCodigo:'', substitutoUnidadeEscolar:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -2576,10 +2602,10 @@ function handleDelegatedChange(e){
     if(action==='select-substituto-nte'){
       if(UI.currentRecordId){
         var ridN = UI.currentRecordId;
-        commitAutosave(ridN, 'substitutoNte', el.value);
-        commitAutosave(ridN, 'substitutoMunicipio', '');
-        commitAutosave(ridN, 'substitutoUnidadeEscolar', '');
-        commitAutosave(ridN, 'substitutoCodigo', '');
+        commitAutosave(ridN, 'substituidoNte', el.value);
+        commitAutosave(ridN, 'substituidoMunicipio', '');
+        commitAutosave(ridN, 'substituidoUnidadeEscolar', '');
+        commitAutosave(ridN, 'substituidoCodigo', '');
       }
       renderModal();
       return;
@@ -2587,9 +2613,9 @@ function handleDelegatedChange(e){
     if(action==='select-substituto-municipio'){
       if(UI.currentRecordId){
         var ridM = UI.currentRecordId;
-        commitAutosave(ridM, 'substitutoMunicipio', el.value);
-        commitAutosave(ridM, 'substitutoUnidadeEscolar', '');
-        commitAutosave(ridM, 'substitutoCodigo', '');
+        commitAutosave(ridM, 'substituidoMunicipio', el.value);
+        commitAutosave(ridM, 'substituidoUnidadeEscolar', '');
+        commitAutosave(ridM, 'substituidoCodigo', '');
       }
       renderModal();
       return;
@@ -2599,8 +2625,8 @@ function handleDelegatedChange(e){
         var ridU = UI.currentRecordId;
         var selectedOpt = el.options[el.selectedIndex];
         var cod = selectedOpt ? selectedOpt.dataset.cod : '';
-        commitAutosave(ridU, 'substitutoUnidadeEscolar', el.value);
-        commitAutosave(ridU, 'substitutoCodigo', cod||'');
+        commitAutosave(ridU, 'substituidoUnidadeEscolar', el.value);
+        commitAutosave(ridU, 'substituidoCodigo', cod||'');
       }
       renderModal();
       return;
