@@ -245,7 +245,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
 .modal.modal-full .modal-body{flex:1;min-height:0;max-height:none;}
 .modal-header{display:flex;align-items:flex-start;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border);}
 .modal-header-text h2{font-size:16px;font-weight:500;}
-.modal-header-text .sub{font-size:12px;color:var(--text-secondary);margin-top:2px;}
+.modal-header-text .sub{font-size:16px;font-weight:500;color:var(--text-primary);margin-top:2px;}
 .modal-close{margin-left:auto;flex:none;}
 .modal-body{padding:16px 22px;max-height:70vh;overflow-y:auto;}
 .modal-footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid var(--border);}
@@ -379,7 +379,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.37</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.38</div>
     </div>
   </nav>
   <div class="main">
@@ -1280,7 +1280,7 @@ function renderTable(items, cadMap){
     '<th class="cell-check"><input type="checkbox" data-action="select-all-page"></th>'+
     sortTh('nome','Profissional')+sortTh('nre','NTE')+sortTh('municipio','Município')+
     sortTh('orgao','Órgão / lotação oficial')+sortTh('cargo','Cargo')+sortTh('situacaoEspecial','Situação especial')+
-    sortTh('formacao','Formação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
+    sortTh('formacao','Formação')+sortTh('situacao','Situação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
     sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th></tr></thead><tbody>';
   items.forEach(function(r){
     var dupKey = (r.nome||'')+'|'+r.cadastro;
@@ -1295,6 +1295,7 @@ function renderTable(items, cadMap){
       '<td>'+esc(r.cargo)+'</td>'+
       '<td>'+esc(r.situacaoEspecial)+'</td>'+
       '<td>'+(esc(r.formacao)||'—')+'</td>'+
+      '<td>'+(esc(r.situacao)||'—')+'</td>'+
       '<td>'+bloqueioBadge(r.bloqueioPagamento)+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td>'+
       '<td>'+medidaBadge(r.medidaTomada)+'</td>'+
