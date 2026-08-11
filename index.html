@@ -384,13 +384,14 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="nav-group-label">Gestão</div>
     <button class="nav-item" data-view="profissionais"><span class="ic">&#9776;</span><span>Profissionais</span><span class="count" id="nav-count-total"></span></button>
     <button class="nav-item" data-view="substituicoes"><span class="ic">&#128100;</span><span>Substituições</span><span class="count" id="nav-count-substituicoes"></span></button>
+    <button class="nav-item" data-view="arquivados"><span class="ic">&#128451;</span><span>Arquivados</span><span class="count" id="nav-count-arquivados"></span></button>
     <button class="nav-item" data-view="relatorios"><span class="ic">&#9776;</span><span>Relatórios</span></button>
     <div class="nav-group-label">Sistema</div>
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.39</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.40</div>
     </div>
   </nav>
   <div class="main">
@@ -733,27 +734,30 @@ function clearFirestoreCollection(ids){
   return chain;
 }
 function clearAllRecords(){
-  var n = RECORDS.length;
-  if(n === 0){ toast('A base já está vazia.'); return; }
+  var toDelete = RECORDS.filter(function(r){ return !r.arquivado; });
+  var archivedCount = RECORDS.length - toDelete.length;
+  var n = toDelete.length;
+  if(n === 0){ toast(archivedCount>0 ? 'Só restam registros arquivados — eles são protegidos e não podem ser apagados.' : 'A base já está vazia.'); return; }
   var senha = prompt('Esta é uma ação restrita. Digite a senha para continuar:');
   if(senha === null) return;
   if(senha !== ADMIN_ACTION_PASSWORD){ toast('Senha incorreta — nada foi apagado.', true); return; }
   var scope = firebaseReady ? 'do banco COMPARTILHADO (afeta todas as máquinas conectadas)' : 'deste navegador';
-  var typed = prompt('Isso vai apagar TODOS os '+n+' registros '+scope+'. Não pode ser desfeito.\n\nSe ainda não exportou um backup, cancele e exporte primeiro (Exportar base completa ou Backup .json).\n\nPara confirmar a exclusão, digite ZERAR abaixo:');
+  var protegidoMsg = archivedCount>0 ? ' Os '+archivedCount+' registro(s) arquivado(s) NÃO serão apagados.' : '';
+  var typed = prompt('Isso vai apagar '+n+' registro(s) '+scope+'.'+protegidoMsg+' Não pode ser desfeito.\n\nSe ainda não exportou um backup, cancele e exporte primeiro (Exportar base completa ou Backup .json).\n\nPara confirmar a exclusão, digite ZERAR abaixo:');
   if(typed !== 'ZERAR'){ toast('Operação cancelada — nada foi apagado.'); return; }
-  var ids = RECORDS.map(function(r){ return r.id; });
-  RECORDS = [];
+  var ids = toDelete.map(function(r){ return r.id; });
+  RECORDS = RECORDS.filter(function(r){ return r.arquivado; });
   UI.selected.clear();
   StorageAdapter.save(RECORDS);
   if(firebaseReady){
     clearFirestoreCollection(ids).then(function(){
-      toast(n+' registro(s) removido(s) do banco compartilhado.');
+      toast(n+' registro(s) removido(s) do banco compartilhado.'+(archivedCount>0?' '+archivedCount+' arquivado(s) preservado(s).':''));
     }).catch(function(e){
       console.error(e);
       toast('Erro ao apagar no servidor — alguns registros podem não ter sido removidos. Verifique a internet.', true);
     });
   } else {
-    toast(n+' registro(s) removido(s) deste navegador.');
+    toast(n+' registro(s) removido(s) deste navegador.'+(archivedCount>0?' '+archivedCount+' arquivado(s) preservado(s).':''));
   }
   navigate('importar');
 }
@@ -980,6 +984,7 @@ var FILTER_KEYS = ['nre','municipio','orgao','tipoServidor','cargo','formacao','
 var QUICKFLAG_LABELS = {semEmail:'Sem e-mail', semTelefone:'Sem telefone', semFormacao:'Sem formação'};
 function isEmptyVal(v){ return !v || !String(v).trim(); }
 function matchesFilters(r){
+  if(r.arquivado) return false;
   var f = UI.filters;
   if(f.quickFlags.has('semEmail') && !isEmptyVal(r.email)) return false;
   if(f.quickFlags.has('semTelefone') && !(isEmptyVal(r.telefone) && isEmptyVal(r.telefone2) && isEmptyVal(r.telefone3))) return false;
@@ -1063,6 +1068,7 @@ var VIEW_TITLES = {
   dashboard: ['Dashboard','Visão geral dos profissionais sem carga horária ou lotação irregular'],
   profissionais: ['Profissionais','Base completa com filtros e ficha individual'],
   substituicoes: ['Substituições','Casos marcados com "Haverá substituição?" e os dados do substituto informado'],
+  arquivados: ['Arquivados','Registros arquivados — não aparecem em Profissionais, Dashboard ou Relatórios, e não podem ser apagados'],
   relatorios: ['Relatórios','Relatórios detalhados por filtro, exportáveis e prontos para impressão'],
   importar: ['Configurações','Importe dados por matrícula, exporte para Excel e faça backup da base']
 };
@@ -1080,6 +1086,9 @@ function render(){
   var subCount = RECORDS.filter(function(r){ return r.haveraSubstituicao; }).length;
   var subBadge = byId('nav-count-substituicoes');
   if(subBadge) subBadge.textContent = subCount>0 ? subCount : '';
+  var arqCount = RECORDS.filter(function(r){ return r.arquivado; }).length;
+  var arqBadge = byId('nav-count-arquivados');
+  if(arqBadge) arqBadge.textContent = arqCount>0 ? arqCount : '';
   var el = byId('view-scroll');
   if(UI_LOADING){
     el.innerHTML = '<div class="empty-state"><span class="ic">&#8635;</span><h3>Conectando ao banco de dados compartilhado...</h3><p>Isso leva poucos segundos, geralmente só na primeira vez.</p></div>';
@@ -1088,6 +1097,7 @@ function render(){
   if(UI.view==='dashboard') el.innerHTML = renderDashboard();
   else if(UI.view==='profissionais') el.innerHTML = renderProfissionais();
   else if(UI.view==='substituicoes') el.innerHTML = renderSubstituicoes();
+  else if(UI.view==='arquivados') el.innerHTML = renderArquivados();
   else if(UI.view==='relatorios') el.innerHTML = renderRelatorios();
   else if(UI.view==='importar') el.innerHTML = renderImportar();
   if(UI.needsScrollReset){
@@ -1296,7 +1306,7 @@ function renderTable(items, cadMap){
     sortTh('nome','Profissional')+sortTh('nre','NTE')+sortTh('municipio','Município')+
     sortTh('orgao','Órgão / lotação oficial')+sortTh('cargo','Cargo')+sortTh('situacaoEspecial','Situação especial')+
     sortTh('formacao','Formação')+sortTh('situacao','Situação')+sortTh('bloqueioPagamento','Bloqueio de pagamento')+
-    sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th></tr></thead><tbody>';
+    sortTh('statusProcesso','Status do processo')+sortTh('medidaTomada','Medida')+'<th></th><th></th></tr></thead><tbody>';
   items.forEach(function(r){
     var dupKey = (r.nome||'')+'|'+r.cadastro;
     var isDup = cadMap.get(dupKey)>1;
@@ -1314,6 +1324,7 @@ function renderTable(items, cadMap){
       '<td>'+bloqueioBadge(r.bloqueioPagamento)+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td>'+
       '<td>'+medidaBadge(r.medidaTomada)+'</td>'+
+      '<td><button class="btn btn-sm btn-ghost" data-action="archive-record" data-id="'+esc(r.id)+'" title="Arquivar este registro">Arquivar</button></td>'+
       '<td><button class="icon-btn" data-action="open-ficha" data-id="'+esc(r.id)+'" aria-label="Abrir ficha">&#8250;</button></td>'+
       '</tr>';
   });
@@ -1458,8 +1469,11 @@ function renderModal(){
   var scrollPos = prevBody ? prevBody.scrollTop : 0;
   var cadCount = RECORDS.filter(function(x){ return x.cadastro===r.cadastro; }).length;
   var footer = UI.modalTab==='dados'
-    ? '<button class="btn btn-danger" data-action="delete-ficha" data-id="'+esc(r.id)+'" style="margin-right:auto">Remover registro</button>'+
-      '<span class="autosave-note">As alterações são salvas automaticamente</span>'+
+    ? (r.arquivado
+        ? '<span class="autosave-note" style="margin-right:auto">&#128451; Arquivado em '+esc(fmtDate(r.arquivadoEm))+' — protegido contra exclusão</span>'+
+          '<button class="btn btn-sm btn-ghost" data-action="unarchive-record" data-id="'+esc(r.id)+'">Desarquivar</button>'
+        : '<button class="btn btn-danger" data-action="delete-ficha" data-id="'+esc(r.id)+'" style="margin-right:auto">Remover registro</button>'+
+          '<span class="autosave-note">As alterações são salvas automaticamente</span>')+
       '<button class="btn btn-primary" data-action="close-modal">Fechar</button>'
     : '<button class="btn btn-primary" data-action="close-modal">Fechar</button>';
   root.innerHTML =
@@ -1778,6 +1792,53 @@ function removePdf(recordId, idx){
     storage.ref().child(pdf.path).delete().catch(function(err){ console.warn('SAGP: não foi possível apagar o arquivo do Storage', err); });
   }
 }
+/* Arquivamento: sai de Profissionais/Dashboard/Relatórios (via matchesFilters) e fica
+   protegido contra exclusão (individual e em massa) — nunca é apagado, só arquivado. */
+function archiveRecord(id){
+  var r = RECORDS.find(function(x){ return x.id===id; });
+  if(!r) return;
+  r.arquivado = true;
+  r.arquivadoEm = todayIso();
+  r.historico.push({data:todayIso(), texto:'Registro arquivado.'});
+  commitAutosave(r.id, 'arquivado', true);
+  render();
+  toast('"'+r.nome+'" foi para Arquivados.');
+}
+function unarchiveRecord(id){
+  var r = RECORDS.find(function(x){ return x.id===id; });
+  if(!r) return;
+  r.arquivado = false;
+  r.historico.push({data:todayIso(), texto:'Registro desarquivado.'});
+  commitAutosave(r.id, 'arquivado', false);
+  render();
+  toast('"'+r.nome+'" voltou para Profissionais.');
+}
+function renderArquivados(){
+  var lista = RECORDS.filter(function(r){ return r.arquivado; })
+    .slice().sort(function(a,b){ return (b.arquivadoEm||'').localeCompare(a.arquivadoEm||''); });
+  var html = '<div class="prof-frame">';
+  if(lista.length===0){
+    html += '<div class="empty-state"><span class="ic">&#128451;</span><h3>Nenhum registro arquivado</h3><p>Use o botão "Arquivar" em Profissionais para mover um caso encerrado pra cá. Registros arquivados nunca são apagados.</p></div>';
+    html += '</div>';
+    return html;
+  }
+  html += '<div class="results-count"><b>'+lista.length+'</b> registro'+(lista.length===1?'':'s')+' arquivado'+(lista.length===1?'':'s')+' &middot; protegidos contra exclusão</div>';
+  html += '<div class="table-wrap"><table><thead><tr>'+
+    '<th>PROFISSIONAL</th><th>NTE</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>ARQUIVADO EM</th><th></th><th></th>'+
+    '</tr></thead><tbody>';
+  lista.forEach(function(r){
+    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer">'+
+      '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+'</div></td>'+
+      '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
+      '<td>'+esc(r.orgao)+'</td>'+
+      '<td>'+esc(fmtDate(r.arquivadoEm)||'—')+'</td>'+
+      '<td><button class="btn btn-sm btn-ghost" data-action="unarchive-record" data-id="'+esc(r.id)+'" title="Trazer de volta para Profissionais">Desarquivar</button></td>'+
+      '<td><button class="icon-btn" data-action="open-ficha" data-id="'+esc(r.id)+'" aria-label="Abrir ficha">&#8250;</button></td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  return html;
+}
 function saveAnexoFromImage(img){
   if(!UI.currentRecordId) return;
   var r = RECORDS.find(function(x){ return x.id===UI.currentRecordId; });
@@ -1937,6 +1998,7 @@ function addHistorico(id){
 function deleteFicha(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r) return;
+  if(r.arquivado){ toast('Registros arquivados são protegidos e não podem ser apagados. Desarquive primeiro se realmente precisar excluir.', true); return; }
   if(!confirm('Remover o registro de '+r.nome+' do sistema? Esta ação não pode ser desfeita.')) return;
   RECORDS = RECORDS.filter(function(x){ return x.id!==id; });
   persist(); deleteFromFirestore(id); closeModal(); render();
@@ -1998,7 +2060,7 @@ function saveNovoRegistro(){
     telefone: byId('nf-telefone').value.trim(), telefone2: byId('nf-telefone2').value.trim(), telefone3: byId('nf-telefone3').value.trim(),
     email: byId('nf-email').value.trim(), semTelefoneSap:false,
     formacao: byId('nf-formacao').value.trim(), lotacaoInformada: byId('nf-lotacaoInformada').value.trim(),
-    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], pdfs:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', statusProcesso:'Pendente de Análise',
+    medidaTomada: byId('nf-medidaTomada').value, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], pdfs:[], arquivado:false, arquivadoEm:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', statusProcesso:'Pendente de Análise',
     responsavel: byId('nf-responsavel').value.trim(), dataUltimoContato:'', observacoes:'',
     historico:[{data:todayIso(), texto:'Registro criado manualmente no SAGP.'}]
   };
@@ -2282,7 +2344,7 @@ function mergeImportedRows(rows){
         regime:mapped.regime||'', tipoServidor:mapped.tipoServidor||'', situacao:mapped.situacao||'',
         cargo:mapped.cargo||'', situacaoEspecial:mapped.situacaoEspecial||'', dataInicio:mapped.dataInicio||'',
         dataFim:mapped.dataFim||'', qtd:mapped.qtd||'', statusOrigem:'Pendente',
-        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], pdfs:[], dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
+        telefone:'', telefone2:'', telefone3:'', email:'', formacao:'', lotacaoInformada:'', semTelefoneSap:false, bloqueioPagamento:'', dataBloqueio:'', processoSei:'', anexos:[], pdfs:[], arquivado:false, arquivadoEm:'', dataContatoSucesso:'', tentTelefone:false, tentWhatsapp:false, tentEmail:false, sucTelefone:false, sucWhatsapp:false, sucEmail:false, haveraSubstituicao:false, substitutoData:'', substituidoMatricula:'', substituidoNome:'', substituidoNte:'', substituidoMunicipio:'', substituidoCodigo:'', substituidoUnidadeEscolar:'', medidaTomada:'', statusProcesso:'Pendente de Análise',
         responsavel:'', dataUltimoContato:'', observacoes:'',
         historico:[{data:todayIso(), texto:'Registro importado de nova extração.'}]
       };
@@ -2617,6 +2679,8 @@ function handleDelegatedClick(e){
       if(!isNaN(idxPdf)) removePdf(UI.currentRecordId, idxPdf);
     }
   }
+  else if(action==='archive-record'){ if(el.dataset.id) archiveRecord(el.dataset.id); }
+  else if(action==='unarchive-record'){ if(el.dataset.id) unarchiveRecord(el.dataset.id); }
   else if(action==='open-anexo-lightbox'){
     if(UI.currentRecordId){
       var idx2 = parseInt(el.dataset.idx,10);
