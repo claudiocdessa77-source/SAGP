@@ -391,7 +391,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.40</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.41</div>
     </div>
   </nav>
   <div class="main">
@@ -1797,7 +1797,6 @@ function removePdf(recordId, idx){
 function archiveRecord(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r) return;
-  r.arquivado = true;
   r.arquivadoEm = todayIso();
   r.historico.push({data:todayIso(), texto:'Registro arquivado.'});
   commitAutosave(r.id, 'arquivado', true);
@@ -1807,7 +1806,6 @@ function archiveRecord(id){
 function unarchiveRecord(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r) return;
-  r.arquivado = false;
   r.historico.push({data:todayIso(), texto:'Registro desarquivado.'});
   commitAutosave(r.id, 'arquivado', false);
   render();
