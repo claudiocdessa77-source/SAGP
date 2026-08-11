@@ -391,7 +391,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.41</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.42</div>
     </div>
   </nav>
   <div class="main">
@@ -1293,6 +1293,7 @@ function bulkBarHtml(){
     MEDIDAS.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('')+'</select>'+
     '<select data-action="bulk-status" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border-strong)"><option value="">Definir status...</option>'+
     STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('')+'</select>'+
+    '<button class="btn btn-sm btn-ghost" data-action="bulk-archive">Arquivar</button>'+
     '<button class="btn btn-sm btn-ghost" data-action="clear-selection" style="margin-left:auto">Limpar seleção</button></div>';
 }
 function sortTh(field, label){
@@ -1372,6 +1373,16 @@ function bulkSetStatus(value){
   RECORDS.forEach(function(r){ if(UI.selected.has(r.id)){ r.statusProcesso=value; r.historico.push({data:todayIso(),texto:'Status alterado em lote para: '+value+'.'}); changed.push(r); } });
   persist(); syncToFirestore(changed); UI.selected.clear(); render();
   toast('Status atualizado para '+n+' registro(s).');
+}
+function bulkArchive(){
+  if(UI.selected.size===0) return;
+  var n = UI.selected.size;
+  if(!confirm('Arquivar '+n+' registro(s) selecionado(s)? Eles saem de Profissionais, Dashboard e Relatórios e vão para Arquivados — não são apagados.')) return;
+  var changed = [];
+  var dataArq = todayIso();
+  RECORDS.forEach(function(r){ if(UI.selected.has(r.id) && !r.arquivado){ r.arquivado=true; r.arquivadoEm=dataArq; r.historico.push({data:dataArq,texto:'Registro arquivado (em lote).'}); changed.push(r); } });
+  persist(); syncToFirestore(changed); UI.selected.clear(); render();
+  toast(changed.length+' registro(s) arquivado(s).');
 }
 /* ============ FICHA MODAL ============ */
 function openFicha(id){
@@ -2698,6 +2709,7 @@ function handleDelegatedClick(e){
   else if(action==='takeover-ficha') takeoverFicha(el.dataset.id);
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
+  else if(action==='bulk-archive'){ bulkArchive(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
   else if(action==='export-report-excel') exportReportExcel();
   else if(action==='print-report') printReport();
