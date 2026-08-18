@@ -391,7 +391,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.42</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.43</div>
     </div>
   </nav>
   <div class="main">
@@ -670,6 +670,39 @@ function migrateLegacySubstituicao(){
   });
   if(touched.length){ persist(); syncToFirestore(touched); }
 }
+/* Diferentes planilhas de origem às vezes escrevem o NTE de forma diferente pro mesmo
+   número (ex.: "NTE 26: Sede: Salvador" vs "NÚCLEO 26 - SALVADOR"), o que separa esses
+   registros nos filtros mesmo sendo o mesmo NTE. Aqui, pra cada número de NTE, descobre
+   qual texto já é majoritário na base (o padrão já estabelecido) e corrige as variações
+   minoritárias pra bater com ele — sem depender de uma lista fixa de nomes. */
+function migrateLegacyNteNaming(){
+  var byNum = {};
+  RECORDS.forEach(function(r){
+    var num = normNteNum(r.nre);
+    if(num===null || !r.nre) return;
+    byNum[num] = byNum[num] || {};
+    byNum[num][r.nre] = (byNum[num][r.nre]||0) + 1;
+  });
+  var canonical = {};
+  Object.keys(byNum).forEach(function(num){
+    var variants = byNum[num], best=null, bestCount=-1;
+    Object.keys(variants).forEach(function(v){ if(variants[v]>bestCount){ best=v; bestCount=variants[v]; } });
+    canonical[num] = best;
+  });
+  var touched = [];
+  RECORDS.forEach(function(r){
+    var num = normNteNum(r.nre);
+    if(num===null) return;
+    var std = canonical[num];
+    if(std && r.nre !== std){
+      r.historico.push({data:todayIso(), texto:'NTE padronizado: "'+r.nre+'" → "'+std+'".'});
+      r.nre = std;
+      touched.push(r);
+    }
+  });
+  if(touched.length){ persist(); syncToFirestore(touched); }
+  return touched.length;
+}
 function startSync(){
   db.collection(FIRESTORE_COLLECTION).onSnapshot(function(snapshot){
     var docs = [];
@@ -682,6 +715,7 @@ function startSync(){
     migrateLegacyStatusValues();
     migrateLegacyAnexo();
     migrateLegacySubstituicao();
+    migrateLegacyNteNaming();
     render();
   }, function(err){
     console.error('SAGP: erro no listener do Firestore', err);
@@ -836,6 +870,7 @@ function initApp(){
     migrateLegacyStatusValues();
     migrateLegacyAnexo();
     migrateLegacySubstituicao();
+    migrateLegacyNteNaming();
     updateSyncStatus('off');
   }
   navigate('dashboard');
