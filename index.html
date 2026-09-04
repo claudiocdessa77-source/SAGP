@@ -391,7 +391,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.43</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.44</div>
     </div>
   </nav>
   <div class="main">
@@ -1329,6 +1329,7 @@ function bulkBarHtml(){
     '<select data-action="bulk-status" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border-strong)"><option value="">Definir status...</option>'+
     STATUS_PROCESSO.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('')+'</select>'+
     '<button class="btn btn-sm btn-ghost" data-action="bulk-archive">Arquivar</button>'+
+    '<button class="btn btn-sm btn-ghost" data-action="bulk-delete" style="color:var(--danger-700)">Excluir</button>'+
     '<button class="btn btn-sm btn-ghost" data-action="clear-selection" style="margin-left:auto">Limpar seleção</button></div>';
 }
 function sortTh(field, label){
@@ -1418,6 +1419,28 @@ function bulkArchive(){
   RECORDS.forEach(function(r){ if(UI.selected.has(r.id) && !r.arquivado){ r.arquivado=true; r.arquivadoEm=dataArq; r.historico.push({data:dataArq,texto:'Registro arquivado (em lote).'}); changed.push(r); } });
   persist(); syncToFirestore(changed); UI.selected.clear(); render();
   toast(changed.length+' registro(s) arquivado(s).');
+}
+function bulkDelete(){
+  if(UI.selected.size===0) return;
+  var n = UI.selected.size;
+  var scope = firebaseReady ? 'do banco COMPARTILHADO (afeta todas as máquinas conectadas)' : 'deste navegador';
+  var typed = prompt('Isso vai APAGAR PERMANENTEMENTE '+n+' registro(s) selecionado(s) '+scope+'. Não pode ser desfeito.\n\nSe não tem certeza — por exemplo, se algum desses registros não for realmente duplicado — use "Arquivar" em vez disso: também tira da lista, mas nunca apaga.\n\nPara confirmar a exclusão, digite EXCLUIR abaixo:');
+  if(typed !== 'EXCLUIR'){ toast('Operação cancelada — nada foi apagado.'); return; }
+  var ids = Array.from(UI.selected);
+  RECORDS = RECORDS.filter(function(r){ return !UI.selected.has(r.id); });
+  UI.selected.clear();
+  persist();
+  if(firebaseReady){
+    clearFirestoreCollection(ids).then(function(){
+      toast(n+' registro(s) excluído(s) do banco compartilhado.');
+    }).catch(function(e){
+      console.error(e);
+      toast('Excluído(s) neste computador, mas houve erro ao excluir no servidor. Verifique a internet.', true);
+    });
+  } else {
+    toast(n+' registro(s) excluído(s) deste navegador.');
+  }
+  render();
 }
 /* ============ FICHA MODAL ============ */
 function openFicha(id){
@@ -2745,6 +2768,7 @@ function handleDelegatedClick(e){
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='bulk-archive'){ bulkArchive(); }
+  else if(action==='bulk-delete'){ bulkDelete(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
   else if(action==='export-report-excel') exportReportExcel();
   else if(action==='print-report') printReport();
