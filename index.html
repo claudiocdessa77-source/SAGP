@@ -391,7 +391,7 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.44</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.45</div>
     </div>
   </nav>
   <div class="main">
@@ -454,6 +454,7 @@ function getUeesForMunicipio(num, municipioNorm){
 var TECNICO_EXTRA_OPTS = [];
 function getTecnicoOptions(){ return TECNICO_BASE_OPTS.concat(TECNICO_EXTRA_OPTS); }
 var ADMIN_ACTION_PASSWORD = 'Lore_2001';
+var OBS_UNLOCK_PASSWORD = 'admin123';
 var MEDIDA_COLOR = {'Desligamento':'red','Bloqueio':'amber','Remoção':'purple','Relotação':'blue','Suspensão de Pagamento':'red'};
 var FILTER_DEFS = [
   {key:'nre', label:'NTE'},
@@ -836,6 +837,7 @@ var UI = {
   openMsel: null, mselSearch: {},
   currentRecordId: null, modalTab: 'dados',
   pdfUploading: {},
+  obsUnlocked: false,
   selected: new Set(),
   reportGroupBy: 'nre',
   lastImportResult: null,
@@ -1444,6 +1446,7 @@ function bulkDelete(){
 }
 /* ============ FICHA MODAL ============ */
 function openFicha(id){
+  UI.obsUnlocked = false;
   var r = RECORDS.find(function(x){ return x.id===id; });
   if(!r){ UI.currentRecordId = id; UI.modalTab = 'dados'; renderModal(); return; }
   if(UI.currentUserName && r.responsavel && r.responsavel!==UI.currentUserName){
@@ -1645,7 +1648,11 @@ function renderFichaDados(r, cadCount){
     contactToggleRow(r, 'tent')+'</div>'+
     '<div class="field"><label>Contato com sucesso em</label><input type="date" id="f-dataContatoSucesso" data-action="autosave-select" data-field="dataContatoSucesso" value="'+esc(r.dataContatoSucesso)+'">'+
     contactToggleRow(r, 'suc')+'</div>'+
-    '<div class="field" style="grid-column:1/-1"><label>Observações</label><textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea></div>'+
+    '<div class="field" style="grid-column:1/-1"><label style="display:flex;align-items:center;justify-content:space-between">Observações'+
+    '<button type="button" class="btn btn-sm btn-ghost" data-action="toggle-obs-lock" style="font-size:11px;padding:3px 9px'+(UI.obsUnlocked?';color:var(--danger-700)':'')+'">'+(UI.obsUnlocked?'🔓 Edição livre — clique para bloquear de novo':'🔒 Corrigir texto (senha)')+'</button></label>'+
+    '<textarea id="f-observacoes" data-action="autosave-text" data-field="observacoes" placeholder="Anotações gerais sobre o caso">'+esc(r.observacoes)+'</textarea>'+
+    (UI.obsUnlocked?'<div class="alert alert-warning" style="margin-top:6px;margin-bottom:0"><span class="ic">&#9888;</span><div>Edição livre ativada — a proteção da data e da assinatura está desligada nesta ficha. Corrija com cuidado.</div></div>':'')+
+    '</div>'+
     '</div>';
 
   html += '<div class="section-title">Anexo (print de tela)</div>';
@@ -2039,6 +2046,7 @@ function getObservacoesProtectedRanges(value){
   return ranges;
 }
 function handleObservacoesBeforeInput(e, ta){
+  if(UI.obsUnlocked) return;
   var ranges = getObservacoesProtectedRanges(ta.value);
   if(!ranges.length) return;
   var s = ta.selectionStart, en = ta.selectionEnd;
@@ -2052,6 +2060,20 @@ function handleObservacoesBeforeInput(e, ta){
   } else {
     for(var i=0;i<ranges.length;i++){ var r=ranges[i]; if(s<r[1] && en>r[0]){ e.preventDefault(); return; } }
   }
+}
+function toggleObsLock(){
+  if(UI.obsUnlocked){
+    UI.obsUnlocked = false;
+    renderModal();
+    toast('Proteção da data e assinatura reativada.');
+    return;
+  }
+  var senha = prompt('Senha para liberar a edição livre deste campo (permite corrigir ou apagar qualquer parte, inclusive datas e assinaturas):');
+  if(senha === null) return;
+  if(senha !== OBS_UNLOCK_PASSWORD){ toast('Senha incorreta.', true); return; }
+  UI.obsUnlocked = true;
+  renderModal();
+  toast('Edição livre liberada para esta ficha. Lembre-se de corrigir com cuidado.');
 }
 function addHistorico(id){
   var r = RECORDS.find(function(x){ return x.id===id; });
@@ -2769,6 +2791,7 @@ function handleDelegatedClick(e){
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='bulk-archive'){ bulkArchive(); }
   else if(action==='bulk-delete'){ bulkDelete(); }
+  else if(action==='toggle-obs-lock'){ toggleObsLock(); }
   else if(action==='select-all-filtered'){ getFiltered().forEach(function(r){ UI.selected.add(r.id); }); render(); }
   else if(action==='export-report-excel') exportReportExcel();
   else if(action==='print-report') printReport();
