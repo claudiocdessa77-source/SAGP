@@ -365,6 +365,21 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
   .report-print-header p{font-size:11.5px;color:#555;}
   .card{break-inside:avoid;}
   #se-print-area tr.row-situacao-especial{background:none !important;border-left:none !important;}
+  /* Repetição do cabeçalho da tabela em cada página impressa:
+     remove sticky, overflow e alturas fixas que impedem a quebra de página */
+  html,body{height:auto !important;overflow:visible !important;}
+  #app{display:block !important;grid-template-rows:none !important;height:auto !important;}
+  .main{display:block !important;height:auto !important;overflow:visible !important;}
+  .view-scroll{display:block !important;height:auto !important;overflow:visible !important;}
+  .prof-frame{display:block !important;height:auto !important;}
+  .table-wrap{display:block !important;flex:none !important;overflow:visible !important;height:auto !important;max-height:none !important;border-radius:0 !important;}
+  table{border-collapse:collapse !important;}
+  thead{display:table-header-group !important;position:static !important;}
+  tfoot{display:table-footer-group !important;}
+  thead th{background:#EEF0F3 !important;color:#333 !important;border-bottom:1px solid #999 !important;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  tbody tr{break-inside:avoid;page-break-inside:avoid;}
+  tbody td{border-bottom:1px solid #ccc !important;}
 }
 @media (max-width:980px){
   #app{grid-template-columns:1fr;}
@@ -402,7 +417,7 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
     <div class="topbar">
       <div>
         <h1 id="view-title">Dashboard</h1>
-        <div class="topbar-sub" id="view-subtitle">Coordenação de Provimento e Movimentação · CEEPLT/CPM</div>
+        <div class="topbar-sub" id="view-subtitle">Coordenação de Provimento e Movimentação · CPM</div>
       </div>
       <div class="topbar-actions">
         <div class="search-global"><span class="ic">&#8981;</span><input type="text" id="global-search" placeholder="Buscar por nome ou cadastro..."></div>
@@ -1991,7 +2006,7 @@ function renderSituacaoEspecialModulo(){
     return html;
   }
   html += '<div id="se-print-area"><div class="report-print-header" style="display:none"><h2>SAGP — Situação Especial</h2>'+
-    '<p>Coordenação de Provimento e Movimentação (CEEPLT/CPM) &middot; Secretaria da Educação da Bahia</p>'+
+    '<p>Coordenação de Provimento e Movimentação (CPM) &middot; Secretaria da Educação da Bahia</p>'+
     '<p>Gerado em '+fmtDate(todayIso())+' &middot; '+SITUACAO_ESPECIAL_LIST.length+' pessoa(s) protegida(s)</p></div>';
   html += '<div class="table-wrap"><table><thead><tr>'+
     '<th>PROFISSIONAL</th><th>NTE</th><th>MUNICÍPIO</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>CARGO</th><th>CONSTA NO SAGP</th><th class="no-print"></th>'+
@@ -2378,7 +2393,7 @@ function renderRelatorios(){
     '<button class="btn btn-sm" data-action="print-report"><span class="ic">&#128438;</span>Imprimir / PDF</button></div></div>';
 
   html += '<div id="report-print-area"><div class="report-print-header" style="display:none"><h2>SAGP — Relatório de Profissionais</h2>'+
-    '<p>Coordenação de Provimento e Movimentação (CEEPLT/CPM) &middot; Secretaria da Educação da Bahia</p>'+
+    '<p>Coordenação de Provimento e Movimentação (CPM) &middot; Secretaria da Educação da Bahia</p>'+
     '<p>Gerado em '+fmtDate(todayIso())+' &middot; '+filtered.length+' registro(s)'+(activeFilters?' &middot; Filtros aplicados':'')+'</p></div>';
   html += groupField==='none' ? renderReportFlatTable(filtered) : renderReportGrouped(filtered, groupField);
   html += '</div>';
