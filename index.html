@@ -561,16 +561,19 @@ function isSituacaoEspecial(cadastro){
   if(!cadastro) return false;
   return SITUACAO_ESPECIAL_CADASTROS.has(String(cadastro).trim());
 }
-function addSituacaoEspecial(entry){
+function addSituacaoEspecial(entry, isEdit){
   var cad = String(entry.cadastro||'').trim();
   var nome = (entry.nome||'').trim();
   if(!cad || !nome){ toast('Preencha ao menos nome e cadastro.', true); return; }
   if(!firebaseReady || !db){ toast('Isso exige conexão com o Firebase.', true); return; }
   db.collection(SITUACAO_ESPECIAL_COLLECTION).doc(cad).set({
     nome:nome, cadastro:cad, nre:(entry.nre||'').trim(), municipio:(entry.municipio||'').trim(),
-    orgao:(entry.orgao||'').trim(), cargo:(entry.cargo||'').trim(), addedAt:todayIso()
+    orgao:(entry.orgao||'').trim(), cargo:(entry.cargo||'').trim(),
+    observacoes:(entry.observacoes||'').trim(),
+    addedAt:(function(){ var prev = SITUACAO_ESPECIAL_LIST.find(function(e){ return String(e.cadastro)===cad; }); return (prev && prev.addedAt) ? prev.addedAt : todayIso(); })(),
+    updatedAt:todayIso()
   }).then(function(){
-    toast('"'+nome+'" adicionado à Situação Especial.');
+    toast(isEdit ? 'Dados de "'+nome+'" atualizados.' : '"'+nome+'" adicionado à Situação Especial.');
     closeModal();
   }).catch(function(err){
     console.error(err);
@@ -2045,6 +2048,7 @@ function openSituacaoEspecialModal(editCadastro){
           '<div class="field"><label>Município</label><input type="text" id="se-municipio" value="'+esc(existing?existing.municipio:'')+'"></div>'+
           '<div class="field"><label>Cargo</label><input type="text" id="se-cargo" value="'+esc(existing?existing.cargo:'')+'"></div>'+
           '<div class="field" style="grid-column:1/-1"><label>Órgão / lotação oficial</label><input type="text" id="se-orgao" value="'+esc(existing?existing.orgao:'')+'"></div>'+
+          '<div class="field" style="grid-column:1/-1"><label>Observações <span style="font-weight:400;color:var(--text-muted);font-size:11.5px">(uso interno — não aparece na lista nem no relatório impresso)</span></label><textarea id="se-observacoes" rows="4" placeholder="Motivo da proteção, referência do processo, orientações da chefia, etc.">'+esc(existing&&existing.observacoes?existing.observacoes:'')+'</textarea></div>'+
           '</div>'+
         '</div>'+
         '<div class="modal-footer"><button class="btn" data-action="close-modal">Cancelar</button>'+
@@ -2055,8 +2059,9 @@ function openSituacaoEspecialModal(editCadastro){
 function saveSituacaoEspecialModal(cadastroOriginal){
   addSituacaoEspecial({
     nome: byId('se-nome').value, cadastro: cadastroOriginal || byId('se-cadastro').value, nre: byId('se-nre').value,
-    municipio: byId('se-municipio').value, orgao: byId('se-orgao').value, cargo: byId('se-cargo').value
-  });
+    municipio: byId('se-municipio').value, orgao: byId('se-orgao').value, cargo: byId('se-cargo').value,
+    observacoes: byId('se-observacoes') ? byId('se-observacoes').value : ''
+  }, !!cadastroOriginal);
 }
 function saveAnexoFromImage(img){
   if(!UI.currentRecordId) return;
