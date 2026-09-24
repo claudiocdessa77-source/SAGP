@@ -364,6 +364,7 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
   .report-print-header h2{font-size:16px;font-weight:600;margin-bottom:4px;}
   .report-print-header p{font-size:11.5px;color:#555;}
   .card{break-inside:avoid;}
+  #se-print-area tr.row-situacao-especial{background:none !important;border-left:none !important;}
 }
 @media (max-width:980px){
   #app{grid-template-columns:1fr;}
@@ -394,7 +395,7 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.47</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.48</div>
     </div>
   </nav>
   <div class="main">
@@ -1980,21 +1981,26 @@ function renderSituacaoEspecialModulo(){
     '<div class="alert alert-warning" style="margin-bottom:0"><span class="ic">&#128683;</span><div>Quem entrar aqui fica sinalizado com fundo vermelho em toda a base do SAGP — significa que nenhum tipo de movimentação pode ser feita pra essa pessoa.</div></div>'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">'+
     '<span><b>'+SITUACAO_ESPECIAL_LIST.length+'</b> pessoa'+(SITUACAO_ESPECIAL_LIST.length===1?'':'s')+' protegida'+(SITUACAO_ESPECIAL_LIST.length===1?'':'s')+'</span>'+
-    '<button class="btn btn-primary btn-sm" data-action="open-situacao-especial-modal"><span class="ic">&#10010;</span>Adicionar</button>'+
+    '<span style="display:flex;gap:8px">'+
+    (SITUACAO_ESPECIAL_LIST.length>0?'<button class="btn btn-sm" data-action="print-situacao-especial"><span class="ic">&#128438;</span>Imprimir</button>':'')+
+    '<button class="btn btn-primary btn-sm" data-action="open-situacao-especial-modal"><span class="ic">&#10010;</span>Adicionar</button></span>'+
     '</div></div>';
   if(SITUACAO_ESPECIAL_LIST.length===0){
     html += '<div class="empty-state"><span class="ic">&#128683;</span><h3>Nenhuma pessoa em Situação Especial</h3><p>Clique em "Adicionar" pra registrar alguém que não pode sofrer nenhum tipo de movimentação.</p></div>';
     html += '</div>';
     return html;
   }
+  html += '<div id="se-print-area"><div class="report-print-header" style="display:none"><h2>SAGP — Situação Especial</h2>'+
+    '<p>Coordenação de Provimento e Movimentação (CEEPLT/CPM) &middot; Secretaria da Educação da Bahia</p>'+
+    '<p>Gerado em '+fmtDate(todayIso())+' &middot; '+SITUACAO_ESPECIAL_LIST.length+' pessoa(s) protegida(s)</p></div>';
   html += '<div class="table-wrap"><table><thead><tr>'+
-    '<th>PROFISSIONAL</th><th>NTE</th><th>MUNICÍPIO</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>CARGO</th><th></th><th></th>'+
+    '<th>PROFISSIONAL</th><th>NTE</th><th>MUNICÍPIO</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>CARGO</th><th>CONSTA NO SAGP</th><th class="no-print"></th>'+
     '</tr></thead><tbody>';
   SITUACAO_ESPECIAL_LIST.forEach(function(e){
     var match = RECORDS.find(function(r){ return String(r.cadastro).trim()===String(e.cadastro).trim(); });
     var iconCell = match
-      ? '<button class="icon-btn" data-action="open-ficha" data-id="'+esc(match.id)+'" title="Consta no SAGP — clique para abrir a ficha" style="color:var(--success-700)">&#10003;</button>'
-      : '<span title="Não consta como registro no SAGP" style="color:var(--warning-700);font-size:15px">&#9888;</span>';
+      ? '<button class="icon-btn" data-action="open-ficha" data-id="'+esc(match.id)+'" title="Consta no SAGP — clique para abrir a ficha" style="color:var(--success-700)">&#10003; Sim</button>'
+      : '<span title="Não consta como registro no SAGP" style="color:var(--warning-700)">&#9888; Não</span>';
     html += '<tr class="row-situacao-especial" data-action="edit-situacao-especial" data-cadastro="'+esc(e.cadastro)+'" style="cursor:pointer">'+
       '<td><b>'+esc(e.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(e.cadastro)+'</div></td>'+
       '<td title="'+esc(e.nre)+'">'+esc(shortNre(e.nre))+'</td>'+
@@ -2002,10 +2008,10 @@ function renderSituacaoEspecialModulo(){
       '<td>'+(esc(e.orgao)||'—')+'</td>'+
       '<td>'+(esc(e.cargo)||'—')+'</td>'+
       '<td>'+iconCell+'</td>'+
-      '<td><button class="icon-btn" data-action="remove-situacao-especial" data-cadastro="'+esc(e.cadastro)+'" title="Remover da Situação Especial" aria-label="Remover">&#10005;</button></td>'+
+      '<td class="no-print"><button class="icon-btn" data-action="remove-situacao-especial" data-cadastro="'+esc(e.cadastro)+'" title="Remover da Situação Especial" aria-label="Remover">&#10005;</button></td>'+
       '</tr>';
   });
-  html += '</tbody></table></div></div>';
+  html += '</tbody></table></div></div></div>';
   return html;
 }
 function openSituacaoEspecialModal(editCadastro){
@@ -2914,6 +2920,7 @@ function handleDelegatedClick(e){
   else if(action==='takeover-ficha') takeoverFicha(el.dataset.id);
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='open-situacao-especial-modal') openSituacaoEspecialModal();
+  else if(action==='print-situacao-especial') printReport();
   else if(action==='edit-situacao-especial'){ if(el.dataset.cadastro) openSituacaoEspecialModal(el.dataset.cadastro); }
   else if(action==='save-situacao-especial') saveSituacaoEspecialModal(el.dataset.cadastroOriginal);
   else if(action==='remove-situacao-especial'){ if(el.dataset.cadastro) removeSituacaoEspecial(el.dataset.cadastro); }
