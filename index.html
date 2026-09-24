@@ -225,6 +225,8 @@ tbody tr:last-child td{border-bottom:none;}
 .multi-flag{color:var(--warning-500);font-size:13px;margin-left:5px;}
 tbody tr.row-duplicate{background:var(--danger-100);}
 tbody tr.row-duplicate:hover{background:#F3C4BD;}
+tbody tr.row-situacao-especial,tbody tr.row-situacao-especial.row-duplicate{background:#F0A499!important;border-left:4px solid var(--danger-700);}
+tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
 .table-empty{padding:60px 20px;text-align:center;color:var(--text-muted);}
 .table-empty .ic{font-size:32px;margin-bottom:10px;display:block;color:var(--border-strong);}
 .pagination{display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:12px 16px;flex:none;
@@ -385,13 +387,14 @@ tbody tr.row-duplicate:hover{background:#F3C4BD;}
     <button class="nav-item" data-view="profissionais"><span class="ic">&#9776;</span><span>Profissionais</span><span class="count" id="nav-count-total"></span></button>
     <button class="nav-item" data-view="substituicoes"><span class="ic">&#128100;</span><span>Substituições</span><span class="count" id="nav-count-substituicoes"></span></button>
     <button class="nav-item" data-view="arquivados"><span class="ic">&#128451;</span><span>Arquivados</span><span class="count" id="nav-count-arquivados"></span></button>
+    <button class="nav-item" data-view="situacaoEspecialModulo"><span class="ic">&#128683;</span><span>Situação Especial</span><span class="count" id="nav-count-situacao-especial"></span></button>
     <button class="nav-item" data-view="relatorios"><span class="ic">&#9776;</span><span>Relatórios</span></button>
     <div class="nav-group-label">Sistema</div>
     <button class="nav-item" data-view="importar"><span class="ic">&#9881;</span><span>Configurações</span></button>
     <div class="sidebar-foot">
       <div class="user-badge" id="user-badge-row"></div>
       <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Dados salvos neste navegador</span></div>
-      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.45</div>
+      <div style="font-size:10.5px;color:#4C5E82;padding:4px 2px 0;">Versão 2026-07-28.46</div>
     </div>
   </nav>
   <div class="main">
@@ -501,6 +504,7 @@ function initFirebase(){
     firebaseReady = true;
     initAuth();
     startTecnicosSync();
+    startSituacaoEspecialSync();
     return true;
   }catch(e){ console.error('SAGP: erro ao iniciar Firebase', e); return false; }
 }
@@ -517,6 +521,55 @@ function startTecnicosSync(){
       if(UI.currentRecordId) renderModal();
     }
   }, function(err){ console.warn('SAGP: erro ao sincronizar técnicos extras', err); });
+}
+/* ============ SITUAÇÃO ESPECIAL (pessoas protegidas contra qualquer movimentação) ============
+   Lista própria, digitada à parte — independe de a pessoa já estar ou não cadastrada no
+   SAGP. Cada entrada vira um documento no Firestore (id = cadastro), sincronizado em tempo
+   real. SITUACAO_ESPECIAL_CADASTROS é o cache (Set) usado pra checar rapidamente, em
+   qualquer linha da tela inteira, se aquele cadastro está protegido. */
+var SITUACAO_ESPECIAL_COLLECTION = 'sagp_situacao_especial';
+var SITUACAO_ESPECIAL_LIST = [];
+var SITUACAO_ESPECIAL_CADASTROS = new Set();
+function startSituacaoEspecialSync(){
+  db.collection(SITUACAO_ESPECIAL_COLLECTION).onSnapshot(function(snapshot){
+    var list = [];
+    snapshot.forEach(function(doc){ list.push(doc.data()); });
+    list.sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||'','pt-BR'); });
+    SITUACAO_ESPECIAL_LIST = list;
+    SITUACAO_ESPECIAL_CADASTROS = new Set(list.map(function(e){ return String(e.cadastro||'').trim(); }).filter(Boolean));
+    render();
+    if(UI.currentRecordId) renderModal();
+  }, function(err){ console.warn('SAGP: erro ao sincronizar situação especial', err); });
+}
+function isSituacaoEspecial(cadastro){
+  if(!cadastro) return false;
+  return SITUACAO_ESPECIAL_CADASTROS.has(String(cadastro).trim());
+}
+function addSituacaoEspecial(entry){
+  var cad = String(entry.cadastro||'').trim();
+  var nome = (entry.nome||'').trim();
+  if(!cad || !nome){ toast('Preencha ao menos nome e cadastro.', true); return; }
+  if(!firebaseReady || !db){ toast('Isso exige conexão com o Firebase.', true); return; }
+  db.collection(SITUACAO_ESPECIAL_COLLECTION).doc(cad).set({
+    nome:nome, cadastro:cad, nre:(entry.nre||'').trim(), municipio:(entry.municipio||'').trim(),
+    orgao:(entry.orgao||'').trim(), cargo:(entry.cargo||'').trim(), addedAt:todayIso()
+  }).then(function(){
+    toast('"'+nome+'" adicionado à Situação Especial.');
+    closeModal();
+  }).catch(function(err){
+    console.error(err);
+    if(err && err.code==='permission-denied'){
+      toast('As regras do Firestore ainda não liberam a coleção "sagp_situacao_especial". Peça ao Claude o texto atualizado das regras.', true);
+    } else {
+      toast('Erro ao salvar. Verifique a internet.', true);
+    }
+  });
+}
+function removeSituacaoEspecial(cadastro){
+  if(!confirm('Remover esta pessoa da lista de Situação Especial? Ela deixa de ficar sinalizada como protegida contra movimentação em todo o sistema.')) return;
+  db.collection(SITUACAO_ESPECIAL_COLLECTION).doc(String(cadastro)).delete().then(function(){
+    toast('Removido da Situação Especial.');
+  }).catch(function(err){ console.error(err); toast('Erro ao remover. Verifique a internet.', true); });
 }
 function addTecnicoExtra(nome, senha){
   if(senha !== ADMIN_ACTION_PASSWORD){ toast('Senha incorreta.', true); return; }
@@ -1106,6 +1159,7 @@ var VIEW_TITLES = {
   profissionais: ['Profissionais','Base completa com filtros e ficha individual'],
   substituicoes: ['Substituições','Casos marcados com "Haverá substituição?" e os dados do substituto informado'],
   arquivados: ['Arquivados','Registros arquivados — não aparecem em Profissionais, Dashboard ou Relatórios, e não podem ser apagados'],
+  situacaoEspecialModulo: ['Situação Especial','Pessoas protegidas contra qualquer movimentação — aparecem sinalizadas em todo o sistema'],
   relatorios: ['Relatórios','Relatórios detalhados por filtro, exportáveis e prontos para impressão'],
   importar: ['Configurações','Importe dados por matrícula, exporte para Excel e faça backup da base']
 };
@@ -1126,6 +1180,8 @@ function render(){
   var arqCount = RECORDS.filter(function(r){ return r.arquivado; }).length;
   var arqBadge = byId('nav-count-arquivados');
   if(arqBadge) arqBadge.textContent = arqCount>0 ? arqCount : '';
+  var seBadge = byId('nav-count-situacao-especial');
+  if(seBadge) seBadge.textContent = SITUACAO_ESPECIAL_LIST.length>0 ? SITUACAO_ESPECIAL_LIST.length : '';
   var el = byId('view-scroll');
   if(UI_LOADING){
     el.innerHTML = '<div class="empty-state"><span class="ic">&#8635;</span><h3>Conectando ao banco de dados compartilhado...</h3><p>Isso leva poucos segundos, geralmente só na primeira vez.</p></div>';
@@ -1135,6 +1191,7 @@ function render(){
   else if(UI.view==='profissionais') el.innerHTML = renderProfissionais();
   else if(UI.view==='substituicoes') el.innerHTML = renderSubstituicoes();
   else if(UI.view==='arquivados') el.innerHTML = renderArquivados();
+  else if(UI.view==='situacaoEspecialModulo') el.innerHTML = renderSituacaoEspecialModulo();
   else if(UI.view==='relatorios') el.innerHTML = renderRelatorios();
   else if(UI.view==='importar') el.innerHTML = renderImportar();
   if(UI.needsScrollReset){
@@ -1349,10 +1406,12 @@ function renderTable(items, cadMap){
   items.forEach(function(r){
     var dupKey = (r.nome||'')+'|'+r.cadastro;
     var isDup = cadMap.get(dupKey)>1;
+    var isSE = isSituacaoEspecial(r.cadastro);
     var multi = isDup ? '<span class="multi-flag" title="Servidor possui mais de um registro no sistema (mesmo nome e matrícula)">&#9888;</span>' : '';
-    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isDup?'row-duplicate':'')+'">'+
+    var seFlag = isSE ? '<span class="multi-flag" title="Situação Especial — nenhuma movimentação permitida" style="color:var(--danger-700)">&#128683;</span>' : '';
+    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isDup?'row-duplicate ':'')+(isSE?'row-situacao-especial':'')+'">'+
       '<td class="cell-check"><input type="checkbox" data-action="select-row" data-id="'+esc(r.id)+'" '+(UI.selected.has(r.id)?'checked':'')+'></td>'+
-      '<td><div class="row-name">'+esc(r.nome)+multi+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
+      '<td><div class="row-name">'+esc(r.nome)+multi+seFlag+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
       '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
       '<td>'+esc(r.municipio)+'</td>'+
       '<td>'+esc(r.orgao)+'</td>'+
@@ -1553,6 +1612,7 @@ function renderModal(){
       '<div class="modal modal-full" data-action="stop-prop">'+
         '<div class="modal-header"><div class="modal-header-text"><h2>'+esc(r.nome)+'</h2>'+
           '<div class="sub tnum">Cadastro '+esc(r.cadastro)+' &middot; '+esc(r.cargo)+'</div></div></div>'+
+        (isSituacaoEspecial(r.cadastro)?'<div class="alert alert-warning" style="margin:0;border-radius:0;background:#F0A499;color:#5C1712"><span class="ic">&#128683;</span><div><b>Situação Especial</b> — nenhum tipo de movimentação pode ser feita para este profissional.</div></div>':'')+
         '<div class="modal-tabs">'+
           '<button class="modal-tab '+(UI.modalTab==='dados'?'active':'')+'" data-action="modal-tab" data-tab="dados">Dados e regularização</button>'+
           '<button class="modal-tab '+(UI.modalTab==='historico'?'active':'')+'" data-action="modal-tab" data-tab="historico">Histórico ('+r.historico.length+')</button></div>'+
@@ -1901,7 +1961,8 @@ function renderArquivados(){
     '<th>PROFISSIONAL</th><th>NTE</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>ARQUIVADO EM</th><th></th><th></th>'+
     '</tr></thead><tbody>';
   lista.forEach(function(r){
-    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer">'+
+    var isSE = isSituacaoEspecial(r.cadastro);
+    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isSE?'row-situacao-especial':'')+'">'+
       '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+'</div></td>'+
       '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
       '<td>'+esc(r.orgao)+'</td>'+
@@ -1912,6 +1973,68 @@ function renderArquivados(){
   });
   html += '</tbody></table></div></div>';
   return html;
+}
+function renderSituacaoEspecialModulo(){
+  var html = '<div class="prof-frame">';
+  html += '<div class="sticky-filters" id="sticky-filters-panel" style="padding-bottom:12px">'+
+    '<div class="alert alert-warning" style="margin-bottom:0"><span class="ic">&#128683;</span><div>Quem entrar aqui fica sinalizado com fundo vermelho em toda a base do SAGP — significa que nenhum tipo de movimentação pode ser feita pra essa pessoa.</div></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">'+
+    '<span><b>'+SITUACAO_ESPECIAL_LIST.length+'</b> pessoa'+(SITUACAO_ESPECIAL_LIST.length===1?'':'s')+' protegida'+(SITUACAO_ESPECIAL_LIST.length===1?'':'s')+'</span>'+
+    '<button class="btn btn-primary btn-sm" data-action="open-situacao-especial-modal"><span class="ic">&#10010;</span>Adicionar</button>'+
+    '</div></div>';
+  if(SITUACAO_ESPECIAL_LIST.length===0){
+    html += '<div class="empty-state"><span class="ic">&#128683;</span><h3>Nenhuma pessoa em Situação Especial</h3><p>Clique em "Adicionar" pra registrar alguém que não pode sofrer nenhum tipo de movimentação.</p></div>';
+    html += '</div>';
+    return html;
+  }
+  html += '<div class="table-wrap"><table><thead><tr>'+
+    '<th>PROFISSIONAL</th><th>NTE</th><th>MUNICÍPIO</th><th>ÓRGÃO / LOTAÇÃO OFICIAL</th><th>CARGO</th><th></th><th></th>'+
+    '</tr></thead><tbody>';
+  SITUACAO_ESPECIAL_LIST.forEach(function(e){
+    var match = RECORDS.find(function(r){ return String(r.cadastro).trim()===String(e.cadastro).trim(); });
+    var iconCell = match
+      ? '<button class="icon-btn" data-action="open-ficha" data-id="'+esc(match.id)+'" title="Consta no SAGP — clique para abrir a ficha" style="color:var(--success-700)">&#10003;</button>'
+      : '<span title="Não consta como registro no SAGP" style="color:var(--warning-700);font-size:15px">&#9888;</span>';
+    html += '<tr class="row-situacao-especial">'+
+      '<td><b>'+esc(e.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(e.cadastro)+'</div></td>'+
+      '<td title="'+esc(e.nre)+'">'+esc(shortNre(e.nre))+'</td>'+
+      '<td>'+(esc(e.municipio)||'—')+'</td>'+
+      '<td>'+(esc(e.orgao)||'—')+'</td>'+
+      '<td>'+(esc(e.cargo)||'—')+'</td>'+
+      '<td>'+iconCell+'</td>'+
+      '<td><button class="icon-btn" data-action="remove-situacao-especial" data-cadastro="'+esc(e.cadastro)+'" title="Remover da Situação Especial" aria-label="Remover">&#10005;</button></td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  return html;
+}
+function openSituacaoEspecialModal(){
+  var root = byId('modal-root');
+  root.innerHTML =
+    '<div class="modal-overlay" data-action="close-modal-bg">'+
+      '<div class="modal" data-action="stop-prop">'+
+        '<div class="modal-header"><div class="modal-header-text"><h2>Adicionar à Situação Especial</h2><div class="sub">Essa pessoa passa a ficar sinalizada em vermelho em toda a base, mesmo que ainda não conste no SAGP</div></div>'+
+        '<button class="icon-btn modal-close" data-action="close-modal" aria-label="Fechar">&#10005;</button></div>'+
+        '<div class="modal-body">'+
+          '<div class="field-grid">'+
+          '<div class="field" style="grid-column:1/-1"><label>Nome completo <span class="req">*</span></label><input type="text" id="se-nome"></div>'+
+          '<div class="field"><label>Cadastro <span class="req">*</span></label><input type="text" id="se-cadastro" placeholder="Mesmo cadastro usado no SAGP"></div>'+
+          '<div class="field"><label>NTE</label><input type="text" id="se-nre" placeholder="Ex: NÚCLEO 26 - SALVADOR"></div>'+
+          '<div class="field"><label>Município</label><input type="text" id="se-municipio"></div>'+
+          '<div class="field"><label>Cargo</label><input type="text" id="se-cargo"></div>'+
+          '<div class="field" style="grid-column:1/-1"><label>Órgão / lotação oficial</label><input type="text" id="se-orgao"></div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="modal-footer"><button class="btn" data-action="close-modal">Cancelar</button>'+
+        '<button class="btn btn-primary" data-action="save-situacao-especial">Adicionar</button></div>'+
+      '</div></div>';
+  setTimeout(function(){ var el=byId('se-nome'); if(el) el.focus(); }, 30);
+}
+function saveSituacaoEspecialModal(){
+  addSituacaoEspecial({
+    nome: byId('se-nome').value, cadastro: byId('se-cadastro').value, nre: byId('se-nre').value,
+    municipio: byId('se-municipio').value, orgao: byId('se-orgao').value, cargo: byId('se-cargo').value
+  });
 }
 function saveAnexoFromImage(img){
   if(!UI.currentRecordId) return;
@@ -2204,7 +2327,8 @@ function renderSubstituicoes(){
     '<th>PROFISSIONAL SUBSTITUTO</th><th>DATA</th><th>MATRÍCULA SUBSTITUÍDO</th><th>NOME SUBSTITUÍDO</th><th>NTE</th><th>MUNICÍPIO</th><th>CÓDIGO</th><th>UNIDADE ESCOLAR</th><th></th>'+
     '</tr></thead><tbody>';
   lista.forEach(function(r){
-    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer">'+
+    var isSE = isSituacaoEspecial(r.cadastro) || isSituacaoEspecial(r.substituidoMatricula);
+    html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isSE?'row-situacao-especial':'')+'">'+
       '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+' · '+esc(r.orgao)+'</div></td>'+
       '<td>'+esc(fmtDate(r.substitutoData)||'—')+'</td>'+
       '<td>'+esc(r.substituidoMatricula||'—')+'</td>'+
@@ -2788,6 +2912,9 @@ function handleDelegatedClick(e){
   else if(action==='view-only-ficha') viewOnlyFicha(el.dataset.id);
   else if(action==='takeover-ficha') takeoverFicha(el.dataset.id);
   else if(action==='save-novo') saveNovoRegistro();
+  else if(action==='open-situacao-especial-modal') openSituacaoEspecialModal();
+  else if(action==='save-situacao-especial') saveSituacaoEspecialModal();
+  else if(action==='remove-situacao-especial'){ if(el.dataset.cadastro) removeSituacaoEspecial(el.dataset.cadastro); }
   else if(action==='clear-selection'){ UI.selected.clear(); render(); }
   else if(action==='bulk-archive'){ bulkArchive(); }
   else if(action==='bulk-delete'){ bulkDelete(); }
