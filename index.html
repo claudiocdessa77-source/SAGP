@@ -296,6 +296,12 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
 .tl-add{display:flex;gap:8px;margin-top:4px;}
 .tl-add textarea{flex:1;min-height:44px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;outline:none;font-size:12.8px;}
 
+.cad-copy{display:inline-flex;align-items:center;gap:4px;cursor:copy;border-radius:4px;padding:0 3px;margin-left:-3px;transition:background .15s,color .15s;}
+.cad-copy:hover{background:var(--gold-100,#FFF4D6);color:var(--gold-700,#8a6d00);}
+.cad-copy .cad-ic{font-size:11px;opacity:0;transition:opacity .15s;}
+.cad-copy:hover .cad-ic{opacity:.8;}
+.cad-copy.copied{background:#E3F4E8;color:#1E7B3E;}
+@media print{.cad-copy .cad-ic{display:none !important;}}
 .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:400;display:flex;flex-direction:column;gap:8px;}
 .toast{background:var(--navy-900);color:#fff;padding:12px 18px;border-radius:9px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;animation:toastin .18s ease-out;}
 .toast .ic{color:var(--success-500);}
@@ -958,6 +964,29 @@ function persist(){
 }
 
 /* ============ UTIL ============ */
+/* Matrícula copiável: clique copia sem abrir a ficha (listener em captura, antes do clique da linha) */
+function cadCopy(cad){
+  if(cad===undefined||cad===null||cad==='') return 'Cad. —';
+  return '<span class="cad-copy" data-cad="'+esc(cad)+'" title="Clique para copiar a matrícula">Cad. '+esc(cad)+'<span class="cad-ic">&#10697;</span></span>';
+}
+function copyTextToClipboard(txt){
+  if(navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+  return new Promise(function(resolve, reject){
+    var ta=document.createElement('textarea'); ta.value=txt; ta.setAttribute('readonly','');
+    ta.style.position='fixed'; ta.style.top='-1000px'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy') ? resolve() : reject(); }catch(err){ reject(err); } finally{ ta.remove(); }
+  });
+}
+document.addEventListener('click', function(e){
+  var el = e.target.closest && e.target.closest('.cad-copy');
+  if(!el) return;
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  var cad = el.dataset.cad;
+  copyTextToClipboard(cad).then(function(){
+    el.classList.add('copied'); setTimeout(function(){ el.classList.remove('copied'); }, 1200);
+    toast('Matrícula '+cad+' copiada.');
+  }).catch(function(){ toast('Não foi possível copiar a matrícula.', true); });
+}, true);
 function byId(id){ return document.getElementById(id); }
 function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtDate(iso){ if(!iso) return '—'; var p = String(iso).split('-'); if(p.length<3) return iso; return p[2]+'/'+p[1]+'/'+p[0]; }
@@ -1430,7 +1459,7 @@ function renderTable(items, cadMap){
     var seFlag = isSE ? '<span class="multi-flag" title="Situação Especial — nenhuma movimentação permitida" style="color:var(--danger-700)">&#128683;</span>' : '';
     html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isDup?'row-duplicate ':'')+(isSE?'row-situacao-especial':'')+'">'+
       '<td class="cell-check"><input type="checkbox" data-action="select-row" data-id="'+esc(r.id)+'" '+(UI.selected.has(r.id)?'checked':'')+'></td>'+
-      '<td><div class="row-name">'+esc(r.nome)+multi+seFlag+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
+      '<td><div class="row-name">'+esc(r.nome)+multi+seFlag+'</div><div class="row-sub tnum">'+cadCopy(r.cadastro)+'</div></td>'+
       '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
       '<td>'+esc(r.municipio)+'</td>'+
       '<td>'+esc(r.orgao)+'</td>'+
@@ -1982,7 +2011,7 @@ function renderArquivados(){
   lista.forEach(function(r){
     var isSE = isSituacaoEspecial(r.cadastro);
     html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isSE?'row-situacao-especial':'')+'">'+
-      '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+'</div></td>'+
+      '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">'+cadCopy(r.cadastro)+'</div></td>'+
       '<td title="'+esc(r.nre)+'">'+esc(shortNre(r.nre))+'</td>'+
       '<td>'+esc(r.orgao)+'</td>'+
       '<td>'+esc(fmtDate(r.arquivadoEm)||'—')+'</td>'+
@@ -2020,7 +2049,7 @@ function renderSituacaoEspecialModulo(){
       ? '<button class="icon-btn" data-action="open-ficha" data-id="'+esc(match.id)+'" title="Consta no SAGP — clique para abrir a ficha" style="color:var(--success-700)">&#10003; Sim</button>'
       : '<span title="Não consta como registro no SAGP" style="color:var(--warning-700)">&#9888; Não</span>';
     html += '<tr class="row-situacao-especial" data-action="edit-situacao-especial" data-cadastro="'+esc(e.cadastro)+'" style="cursor:pointer">'+
-      '<td><b>'+esc(e.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(e.cadastro)+'</div></td>'+
+      '<td><b>'+esc(e.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">'+cadCopy(e.cadastro)+'</div></td>'+
       '<td title="'+esc(e.nre)+'">'+esc(shortNre(e.nre))+'</td>'+
       '<td>'+(esc(e.municipio)||'—')+'</td>'+
       '<td>'+(esc(e.orgao)||'—')+'</td>'+
@@ -2323,7 +2352,7 @@ function renderReportFlatTable(list){
     '<th>Profissional</th><th>NTE</th><th>Município</th><th>Órgão</th><th>Cargo</th>'+
     '<th>Situação especial</th><th>Telefone</th><th>E-mail</th><th>Status</th><th>Medida</th><th>Responsável</th></tr></thead><tbody>';
   list.forEach(function(r){
-    html += '<tr><td><div class="row-name">'+esc(r.nome)+'</div><div class="row-sub tnum">Cad. '+esc(r.cadastro)+'</div></td>'+
+    html += '<tr><td><div class="row-name">'+esc(r.nome)+'</div><div class="row-sub tnum">'+cadCopy(r.cadastro)+'</div></td>'+
       '<td>'+esc(shortNre(r.nre))+'</td><td>'+esc(r.municipio)+'</td><td>'+esc(r.orgao)+'</td><td>'+esc(r.cargo)+'</td>'+
       '<td>'+esc(r.situacaoEspecial)+'</td><td>'+(esc(phonesDisplay(r))||'—')+'</td><td>'+(esc(r.email)||'—')+'</td>'+
       '<td>'+statusBadge(r.statusProcesso)+'</td><td>'+medidaBadge(r.medidaTomada)+'</td><td>'+(esc(r.responsavel)||'—')+'</td></tr>';
@@ -2356,7 +2385,7 @@ function renderSubstituicoes(){
   lista.forEach(function(r){
     var isSE = isSituacaoEspecial(r.cadastro) || isSituacaoEspecial(r.substituidoMatricula);
     html += '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer" class="'+(isSE?'row-situacao-especial':'')+'">'+
-      '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">Cad. '+esc(r.cadastro)+' · '+esc(r.orgao)+'</div></td>'+
+      '<td><b>'+esc(r.nome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">'+cadCopy(r.cadastro)+' · '+esc(r.orgao)+'</div></td>'+
       '<td>'+esc(fmtDate(r.substitutoData)||'—')+'</td>'+
       '<td>'+esc(r.substituidoMatricula||'—')+'</td>'+
       '<td>'+esc(r.substituidoNome||'—')+'</td>'+
@@ -2448,7 +2477,7 @@ function renderImportar(){
     '<input type="file" id="file-input" accept=".xlsx,.xls" style="display:none"></div>';
   if(UI.lastImportResult){
     var res = UI.lastImportResult;
-    html += '<div class="alert alert-info" style="margin-top:14px"><span class="ic">&#10003;</span><div>Importação concluída: <b>'+res.created+'</b> novo(s) registro(s), <b>'+res.updated+'</b> atualizado(s)'+(res.skipped?', '+res.skipped+' linha(s) ignorada(s) por falta de nome/cadastro':'')+', de '+res.total+' linhas lidas.</div></div>';
+    html += renderImportResult(res);
   }
   html += '<div class="alert alert-info" style="margin-top:14px"><span class="ic">&#9432;</span><div>Registros já existentes (mesmo cadastro + órgão) são <b>atualizados</b> nos dados de origem sem apagar telefone, e-mail, medida ou histórico já preenchidos. Novos cadastros são adicionados à base.</div></div>';
   html += '</div>';
@@ -2550,6 +2579,47 @@ function downloadModeloCarga(){
     toast('Planilha modelo baixada.');
   }catch(err){ console.error(err); toast('Não foi possível gerar a planilha modelo.', true); }
 }
+function renderImportResult(res){
+  var d = res.det || {created:[],updated:[],unchanged:[],archived:[],skipped:[]};
+  function lnk(kind, n, label){
+    if(!n) return '<span style="color:var(--text-muted)">'+n+' '+label+'</span>';
+    return '<a href="#" data-action="import-detail" data-kind="'+kind+'" style="font-weight:600;color:var(--gold-600);text-decoration:underline">'+n+' '+label+'</a>';
+  }
+  var html = '';
+  if(res.total===0){
+    html += '<div class="alert alert-warning" style="margin-top:14px"><span class="ic">&#9888;</span><div><b>Nenhuma linha encontrada.</b> Confira se os dados estão na aba <b>NOMINAL</b> (ou na primeira aba), a partir da linha 2, com os cabeçalhos na linha 1.</div></div>';
+    return html;
+  }
+  if(res.missingCols && res.missingCols.length){
+    html += '<div class="alert alert-warning" style="margin-top:14px"><span class="ic">&#9888;</span><div><b>Coluna(s) não reconhecida(s):</b> '+esc(res.missingCols.join(', '))+'. Use a planilha modelo, sem renomear os cabeçalhos da linha 1.</div></div>';
+  }
+  var ok = (res.created+res.updated)>0;
+  html += '<div class="alert '+(ok?'alert-info':'alert-warning')+'" style="margin-top:14px"><span class="ic">'+(ok?'&#10003;':'&#9888;')+'</span><div>'+
+    '<b>'+res.total+'</b> linha(s) lida(s): '+lnk('created',d.created.length,'novo(s)')+' &middot; '+lnk('updated',d.updated.length,'atualizado(s)')+' &middot; '+
+    lnk('unchanged',d.unchanged.length,'já existente(s) sem alteração')+' &middot; '+lnk('skipped',d.skipped.length,'ignorada(s) por falta de nome/cadastro')+'.'+
+    (!ok && d.unchanged.length ? '<div style="margin-top:6px">Todos os registros desta planilha <b>já estão na base com os mesmos dados</b> (mesmo cadastro + mesmo órgão) — por isso nada foi alterado.</div>' : '')+
+    (d.archived.length ? '<div style="margin-top:6px">'+lnk('archived',d.archived.length,'registro(s)')+' encontrado(s) está(ão) em <b>Arquivados</b> e por isso não aparece(m) na lista principal.</div>' : '')+
+    '</div></div>';
+  return html;
+}
+function openImportDetail(kind){
+  var res = UI.lastImportResult; if(!res || !res.det) return;
+  var titles = {created:'Registros novos criados', updated:'Registros atualizados', unchanged:'Registros já existentes sem alteração', archived:'Registros encontrados em Arquivados', skipped:'Linhas ignoradas'};
+  var body;
+  if(kind==='skipped'){
+    body = '<table><thead><tr><th>LINHA DA PLANILHA</th><th>NOME</th><th>CADASTRO</th></tr></thead><tbody>'+
+      res.det.skipped.map(function(x){ return '<tr><td>'+x.linha+'</td><td>'+(esc(x.nome)||'<i>em branco</i>')+'</td><td>'+(esc(x.cadastro)||'<i>em branco</i>')+'</td></tr>'; }).join('')+'</tbody></table>';
+  } else {
+    var recs = res.det[kind].map(function(id){ return RECORDS.find(function(r){ return r.id===id; }); }).filter(Boolean);
+    body = '<table><thead><tr><th>PROFISSIONAL</th><th>ÓRGÃO / LOTAÇÃO</th><th>SITUAÇÃO ESPECIAL</th><th></th></tr></thead><tbody>'+
+      recs.map(function(r){ return '<tr data-action="open-ficha" data-id="'+esc(r.id)+'" style="cursor:pointer"><td><b>'+esc(r.nome)+'</b><div style="font-size:12px;color:var(--text-secondary)">'+cadCopy(r.cadastro)+'</div></td><td>'+(esc(r.orgao)||'—')+'</td><td>'+(esc(r.situacaoEspecial)||'—')+'</td><td>'+(r.arquivado?'<span style="color:var(--warning-700)">Arquivado</span>':'')+'</td></tr>'; }).join('')+'</tbody></table>';
+  }
+  byId('modal-root').innerHTML =
+    '<div class="modal-overlay" data-action="close-modal-bg"><div class="modal" data-action="stop-prop" style="max-width:900px">'+
+    '<div class="modal-header"><div class="modal-header-text"><h2>'+titles[kind]+'</h2><div class="sub">Resultado da última importação'+(kind!=='skipped'?' — clique em uma linha para abrir a ficha':'')+'</div></div>'+
+    '<button class="icon-btn modal-close" data-action="close-modal" aria-label="Fechar">&#10005;</button></div>'+
+    '<div class="modal-body"><div class="table-wrap table-wrap-standalone">'+body+'</div></div></div></div>';
+}
 function handleImportFile(file){
   if(typeof XLSX==='undefined'){ toast('Biblioteca de importação indisponível (sem conexão).', true); return; }
   var reader = new FileReader();
@@ -2569,13 +2639,18 @@ function handleImportFile(file){
   };
   reader.readAsArrayBuffer(file);
 }
+function normOrgao(o){ return String(o||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
 function mergeImportedRows(rows){
   var created=0, updated=0, skipped=0;
   var touched = [];
-  rows.forEach(function(row){
+  var det = {created:[], updated:[], unchanged:[], archived:[], skipped:[]};
+  var headersFound = rows.length ? Object.keys(rows[0]).map(normKey) : [];
+  var missingCols = ['NOME','CADASTRO'].filter(function(c){ return headersFound.indexOf(c)===-1; });
+  if(headersFound.indexOf('ORGAO')===-1 && headersFound.indexOf('LOTACAO')===-1 && headersFound.indexOf('ORGAOLOTACAO')===-1) missingCols.push('ORGAO/LOTACAO');
+  rows.forEach(function(row, idx){
     var mapped = {};
     Object.keys(row).forEach(function(k){ var nk=normKey(k); if(COLUMN_MAP[nk]) mapped[COLUMN_MAP[nk]] = row[k]; });
-    if(!mapped.nome || !mapped.cadastro){ skipped++; return; }
+    if(!mapped.nome || !mapped.cadastro){ skipped++; det.skipped.push({linha: (row.__rowNum__!==undefined ? row.__rowNum__+1 : idx+2), nome: String(mapped.nome||'').trim(), cadastro: String(mapped.cadastro||'').trim()}); return; }
     mapped.dataInicio = toIsoDate(mapped.dataInicio);
     mapped.dataFim = toIsoDate(mapped.dataFim);
     mapped.cadastro = parseIntSafe(mapped.cadastro);
@@ -2586,13 +2661,15 @@ function mergeImportedRows(rows){
     mapped.nome = String(mapped.nome).trim();
     mapped.orgao = String(mapped.orgao||'').trim();
 
-    var existing = RECORDS.find(function(r){ return r.cadastro===mapped.cadastro && r.orgao===mapped.orgao; });
+    var existing = RECORDS.find(function(r){ return Number(r.cadastro)===Number(mapped.cadastro) && normOrgao(r.orgao)===normOrgao(mapped.orgao); });
     if(existing){
       var changed = [];
       ['nre','municipio','codsecul','orgao','regime','tipoServidor','situacao','cargo','situacaoEspecial','dataInicio','dataFim','qtd'].forEach(function(f){
         if(mapped[f]!==undefined && mapped[f]!=='' && String(existing[f])!==String(mapped[f])){ changed.push(f); existing[f]=mapped[f]; }
       });
-      if(changed.length){ existing.historico.push({data:todayIso(), texto:'Atualizado por nova importação (campos: '+changed.join(', ')+').'}); updated++; touched.push(existing); }
+      if(changed.length){ existing.historico.push({data:todayIso(), texto:'Atualizado por nova importação (campos: '+changed.join(', ')+').'}); updated++; touched.push(existing); det.updated.push(existing.id); }
+      else det.unchanged.push(existing.id);
+      if(existing.arquivado) det.archived.push(existing.id);
     } else {
       var newRec = {
         id: uid('sagp_imp'), cadastro:mapped.cadastro, cadastroSap:mapped.cadastroSap, nome:mapped.nome,
@@ -2607,11 +2684,12 @@ function mergeImportedRows(rows){
       RECORDS.push(newRec);
       touched.push(newRec);
       created++;
+      det.created.push(newRec.id);
     }
   });
   persist();
   syncToFirestore(touched);
-  return {created:created, updated:updated, skipped:skipped, total:rows.length};
+  return {created:created, updated:updated, skipped:skipped, total:rows.length, unchanged:det.unchanged.length, det:det, missingCols:missingCols};
 }
 
 /* ============ IMPORTAÇÃO DE CONTATOS POR MATRÍCULA (telefone/e-mail) ============
@@ -2970,6 +3048,7 @@ function handleDelegatedClick(e){
   else if(action==='export-filtered-pdf') exportFilteredPdf();
   else if(action==='export-all-excel') exportAllExcel();
   else if(action==='download-modelo-carga') downloadModeloCarga();
+  else if(action==='import-detail'){ if(e && e.preventDefault) e.preventDefault(); openImportDetail(el.dataset.kind); }
   else if(action==='export-backup-json') exportBackupJson();
   else if(action==='clear-all') clearAllRecords();
   else if(action==='add-tecnico'){
