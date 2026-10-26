@@ -116,6 +116,7 @@ button{cursor:pointer;}
   width:100%;display:block;font-family:inherit;
 }
 .kpi-card:hover{box-shadow:var(--shadow-md);border-color:var(--border-strong);transform:translateY(-1px);}
+.kpi-card.rs-kpi-active{border-color:var(--gold-500);box-shadow:0 0 0 2px var(--gold-50),var(--shadow-md);}
 .kpi-card .bar{position:absolute;left:0;top:0;bottom:0;width:4px;}
 .kpi-label{font-size:12px;color:var(--text-secondary);font-weight:500;display:flex;align-items:center;gap:6px;}
 .kpi-value{font-size:29px;font-weight:500;margin-top:8px;letter-spacing:-.01em;}
@@ -371,7 +372,8 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
   .report-print-header h2{font-size:16px;font-weight:600;margin-bottom:4px;}
   .report-print-header p{font-size:11.5px;color:#555;}
   .card{break-inside:avoid;}
-  #se-print-area tr.row-situacao-especial{background:none !important;border-left:none !important;}
+  #se-print-area tr.row-situacao-especial,#rs-print-area tr.row-situacao-especial{background:none !important;border-left:none !important;}
+  .rs-kpis{display:none !important;}
   /* Repetição do cabeçalho da tabela em cada página impressa:
      remove sticky, overflow e alturas fixas que impedem a quebra de página */
   html,body{height:auto !important;overflow:visible !important;}
@@ -410,6 +412,7 @@ tbody tr.row-situacao-especial:hover{background:#EC9284!important;}
     <button class="nav-item" data-view="profissionais"><span class="ic">&#9776;</span><span>Profissionais</span><span class="count" id="nav-count-total"></span></button>
     <button class="nav-item" data-view="substituicoes"><span class="ic">&#128100;</span><span>Substituições</span><span class="count" id="nav-count-substituicoes"></span></button>
     <button class="nav-item" data-view="arquivados"><span class="ic">&#128451;</span><span>Arquivados</span><span class="count" id="nav-count-arquivados"></span></button>
+    <button class="nav-item" data-view="redaSubstituido"><span class="ic">&#8644;</span><span>REDA Substituído</span><span class="count" id="nav-count-reda-substituido"></span></button>
     <button class="nav-item" data-view="situacaoEspecialModulo"><span class="ic">&#128683;</span><span>Situação Especial</span><span class="count" id="nav-count-situacao-especial"></span></button>
     <button class="nav-item" data-view="relatorios"><span class="ic">&#9776;</span><span>Relatórios</span></button>
     <div class="nav-group-label">Sistema</div>
@@ -528,6 +531,7 @@ function initFirebase(){
     initAuth();
     startTecnicosSync();
     startSituacaoEspecialSync();
+    startRedaSubstituidoSync();
     return true;
   }catch(e){ console.error('SAGP: erro ao iniciar Firebase', e); return false; }
 }
@@ -596,6 +600,339 @@ function removeSituacaoEspecial(cadastro){
   db.collection(SITUACAO_ESPECIAL_COLLECTION).doc(String(cadastro)).delete().then(function(){
     toast('Removido da Situação Especial.');
   }).catch(function(err){ console.error(err); toast('Erro ao remover. Verifique a internet.', true); });
+}
+/* ============ REDA SUBSTITUÍDO ============
+   Controle de REDA substituídos. Regras de substituição:
+   - REDA Emergencial pode ser substituído por Efetivo ou por REDA Seletivo;
+   - REDA Seletivo só pode ser substituído por Efetivo.
+   Cada substituição é um documento na coleção "sagp_reda_substituido", sincronizado em
+   tempo real. O bloco "nova lotação" registra a Unidade Escolar obtida depois para o
+   REDA substituído (município, UEE, disciplina, CH). */
+var REDA_SUBST_COLLECTION = 'sagp_reda_substituido';
+var REDA_SUBST_LIST = [];
+var RS_MOD_SUBSTITUIDO = ['REDA Emergencial','REDA Seletivo'];
+var RS_REGRAS = { 'REDA Emergencial':['Efetivo','REDA Seletivo'], 'REDA Seletivo':['Efetivo'] };
+var RS_CH_SUGESTOES = [20,40];
+var RS_MUNICIPIOS = null; /* { 'SALVADOR': {nte:26, uees:[[nome,cod],...]} } */
+function rsBuildMunicipios(){
+  if(RS_MUNICIPIOS) return RS_MUNICIPIOS;
+  RS_MUNICIPIOS = {};
+  Object.keys(NTE_HIERARCHY_REF).forEach(function(num){
+    var node = NTE_HIERARCHY_REF[num];
+    Object.keys(node).forEach(function(mun){
+      if(!RS_MUNICIPIOS[mun]) RS_MUNICIPIOS[mun] = {nte: parseInt(num,10), uees: []};
+      RS_MUNICIPIOS[mun].uees = RS_MUNICIPIOS[mun].uees.concat(node[mun]);
+    });
+  });
+  Object.keys(RS_MUNICIPIOS).forEach(function(m){
+    RS_MUNICIPIOS[m].uees.sort(function(a,b){ return String(a[0]).localeCompare(String(b[0]),'pt-BR'); });
+  });
+  return RS_MUNICIPIOS;
+}
+function rsMunicipioKey(m){
+  var k = normMunicipioName(m); var map = rsBuildMunicipios();
+  return map[k] ? k : '';
+}
+function startRedaSubstituidoSync(){
+  db.collection(REDA_SUBST_COLLECTION).onSnapshot(function(snapshot){
+    var list = [];
+    snapshot.forEach(function(doc){ var d = doc.data(); d.id = doc.id; list.push(d); });
+    list.sort(function(a,b){ return (a.substituidoNome||'').localeCompare(b.substituidoNome||'','pt-BR'); });
+    REDA_SUBST_LIST = list;
+    render();
+  }, function(err){
+    console.warn('SAGP: erro ao sincronizar REDA substituído', err);
+    if(err && err.code==='permission-denied') UI.rsPermError = true;
+  });
+}
+function rsIsRealocado(e){ return !!(e.novaUee || e.novaUeeCodigo); }
+function rsFiltered(){
+  var f = UI.rsFilter || 'todos';
+  var q = String((UI.filters && UI.filters.search) || '').trim().toLowerCase();
+  return REDA_SUBST_LIST.filter(function(e){
+    if(f==='aguardando' && rsIsRealocado(e)) return false;
+    if(f==='realocados' && !rsIsRealocado(e)) return false;
+    if(f==='emergencial' && e.substituidoModalidade!=='REDA Emergencial') return false;
+    if(f==='seletivo' && e.substituidoModalidade!=='REDA Seletivo') return false;
+    if(f==='porEfetivo' && e.substitutoModalidade!=='Efetivo') return false;
+    if(f==='porSeletivo' && e.substitutoModalidade!=='REDA Seletivo') return false;
+    if(q){
+      var hay = [e.substituidoNome,e.substituidoMatricula,e.substitutoNome,e.substitutoMatricula,e.uee,e.municipio,e.novaUee,e.novoMunicipio].join(' ').toLowerCase();
+      if(hay.indexOf(q)===-1) return false;
+    }
+    return true;
+  });
+}
+function rsKpi(key, label, value, color, foot){
+  var barColors = {gray:'var(--text-muted)',red:'var(--danger-500)',green:'var(--success-500)',amber:'var(--warning-500)',blue:'var(--info-500)',purple:'#7F77DD'};
+  var active = (UI.rsFilter||'todos')===key;
+  return '<button class="kpi-card'+(active?' rs-kpi-active':'')+'" data-action="rs-filter" data-key="'+key+'" title="Clique para listar os registros">'+
+    '<div class="bar" style="background:'+barColors[color]+'"></div>'+
+    '<div class="kpi-label">'+esc(label)+'</div>'+
+    '<div class="kpi-value tnum">'+value+'</div>'+
+    '<div class="kpi-foot">'+esc(foot)+'</div></button>';
+}
+var RS_FILTER_LABELS = {todos:'Todos os registros', aguardando:'Aguardando nova Unidade Escolar', realocados:'Com nova Unidade Escolar',
+  emergencial:'REDA Emergencial substituídos', seletivo:'REDA Seletivo substituídos', porEfetivo:'Substituídos por Efetivo', porSeletivo:'Substituídos por REDA Seletivo'};
+function renderRedaSubstituido(){
+  var all = REDA_SUBST_LIST;
+  var cnt = function(fn){ return all.filter(fn).length; };
+  var html = '<div class="prof-frame">';
+  html += '<div class="sticky-filters" id="sticky-filters-panel" style="padding-bottom:12px">';
+  if(UI.rsPermError){
+    html += '<div class="alert alert-warning" style="margin-bottom:10px"><span class="ic">&#9888;</span><div>As regras do Firestore ainda não liberam a coleção <b>sagp_reda_substituido</b>. Inclua a regra dessa coleção no console do Firebase para os dados aparecerem e serem gravados.</div></div>';
+  }
+  html += '<div class="grid-kpi rs-kpis" style="margin-bottom:12px">'+
+    rsKpi('todos','Total de REDA substituídos',all.length,'blue','Registradas no módulo')+
+    rsKpi('aguardando','Aguardando nova UEE',cnt(function(e){ return !rsIsRealocado(e); }),'amber','Ainda sem Unidade Escolar')+
+    rsKpi('realocados','Com nova UEE',cnt(rsIsRealocado),'green','Já realocados')+
+    rsKpi('emergencial','REDA Emergencial',cnt(function(e){ return e.substituidoModalidade==='REDA Emergencial'; }),'purple','Substituídos')+
+    rsKpi('seletivo','REDA Seletivo',cnt(function(e){ return e.substituidoModalidade==='REDA Seletivo'; }),'gray','Substituídos (só por Efetivo)')+
+    '</div>';
+  var lista = rsFiltered();
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
+    '<span><b>'+lista.length+'</b> registro'+(lista.length===1?'':'s')+' &middot; '+esc(RS_FILTER_LABELS[UI.rsFilter||'todos'])+
+    ((UI.rsFilter && UI.rsFilter!=='todos') ? ' <a href="#" data-action="rs-filter" data-key="todos" style="margin-left:6px;color:var(--gold-600);text-decoration:underline">mostrar todos</a>' : '')+'</span>'+
+    '<span style="display:flex;gap:8px">'+
+    (lista.length?'<button class="btn btn-sm" data-action="rs-export"><span class="ic">&#8595;</span>Excel</button><button class="btn btn-sm" data-action="rs-print"><span class="ic">&#128438;</span>Imprimir</button>':'')+
+    '<button class="btn btn-primary btn-sm" data-action="rs-open-modal"><span class="ic">&#10010;</span>Registrar substituição</button></span></div>';
+  html += '</div>';
+  if(all.length===0){
+    html += '<div class="empty-state"><span class="ic">&#8644;</span><h3>Nenhum REDA substituído registrado</h3><p>Clique em "Registrar substituição" sempre que um Efetivo substituir um REDA (Emergencial ou Seletivo) ou um REDA Seletivo substituir um REDA Emergencial.</p></div></div>';
+    return html;
+  }
+  if(lista.length===0){
+    html += '<div class="empty-state"><span class="ic">&#8981;</span><h3>Nenhum registro neste filtro</h3><p>Altere o filtro ou a busca.</p></div></div>';
+    return html;
+  }
+  html += '<div id="rs-print-area"><div class="report-print-header" style="display:none"><h2>SAGP — REDA Substituído</h2>'+
+    '<p>Coordenação de Provimento e Movimentação (CPM) &middot; Secretaria da Educação da Bahia</p>'+
+    '<p>'+esc(RS_FILTER_LABELS[UI.rsFilter||'todos'])+' &middot; Gerado em '+fmtDate(todayIso())+' &middot; '+lista.length+' registro(s)</p></div>';
+  html += '<div class="table-wrap"><table><thead><tr>'+
+    '<th>REDA SUBSTITUÍDO</th><th>MODALIDADE</th><th>CH</th><th>MUNICÍPIO / UEE</th>'+
+    '<th>SUBSTITUTO</th><th>MODALIDADE</th><th>CH</th><th>NOVA UNIDADE ESCOLAR</th><th class="no-print"></th>'+
+    '</tr></thead><tbody>';
+  lista.forEach(function(e){
+    var isSE = isSituacaoEspecial(e.substituidoMatricula);
+    var nova = rsIsRealocado(e)
+      ? '<span class="badge b-green"><span class="badge-dot"></span>Realocado</span><div style="font-size:12px;margin-top:4px">'+esc(e.novaUee||'')+
+        '<div style="color:var(--text-secondary)">'+esc(e.novoMunicipio||'')+(e.novaDisciplina?' &middot; '+esc(e.novaDisciplina):'')+(e.novaCh?' &middot; '+esc(e.novaCh)+'h':'')+'</div></div>'
+      : '<span class="badge b-amber"><span class="badge-dot"></span>Aguardando</span>';
+    html += '<tr data-action="rs-edit" data-id="'+esc(e.id)+'" style="cursor:pointer" class="'+(isSE?'row-situacao-especial':'')+'">'+
+      '<td><b>'+esc(e.substituidoNome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">'+cadCopy(e.substituidoMatricula)+'</div></td>'+
+      '<td>'+esc(e.substituidoModalidade||'—')+'</td>'+
+      '<td class="tnum">'+(e.substituidoCh?esc(e.substituidoCh)+'h':'—')+'</td>'+
+      '<td>'+(esc(e.uee)||'—')+'<div style="font-size:12px;color:var(--text-secondary)">'+(esc(e.municipio)||'')+(e.nteNum?' &middot; NTE '+esc(e.nteNum):'')+'</div></td>'+
+      '<td><b>'+esc(e.substitutoNome)+'</b><div class="sub" style="font-size:12px;color:var(--text-secondary)">'+cadCopy(e.substitutoMatricula)+'</div></td>'+
+      '<td>'+esc(e.substitutoModalidade||'—')+'</td>'+
+      '<td class="tnum">'+(e.substitutoCh?esc(e.substitutoCh)+'h':'—')+'</td>'+
+      '<td>'+nova+'</td>'+
+      '<td class="no-print"><button class="icon-btn" data-action="rs-remove" data-id="'+esc(e.id)+'" title="Excluir registro" aria-label="Excluir">&#10005;</button></td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div></div></div>';
+  return html;
+}
+function rsMunicipioOptions(selected){
+  var map = rsBuildMunicipios();
+  return '<option value="">Selecione...</option>'+Object.keys(map).sort(function(a,b){ return a.localeCompare(b,'pt-BR'); }).map(function(m){
+    return '<option value="'+esc(m)+'" '+(m===selected?'selected':'')+'>'+esc(m)+'</option>';
+  }).join('');
+}
+function rsUeeOptions(municipio, selCode, selNome){
+  var node = rsBuildMunicipios()[municipio];
+  var html = '<option value="">'+(node?'Selecione...':'Escolha o município primeiro')+'</option>';
+  var found = false;
+  if(node) node.uees.forEach(function(u){
+    var sel = (selCode && String(u[1])===String(selCode)) || (!selCode && selNome && normOrgao(u[0])===normOrgao(selNome));
+    if(sel) found = true;
+    html += '<option value="'+esc(u[1])+'" data-nome="'+esc(u[0])+'" '+(sel?'selected':'')+'>'+esc(u[0])+' ('+esc(u[1])+')</option>';
+  });
+  if(!found && selNome) html += '<option value="'+esc(selCode||'')+'" data-nome="'+esc(selNome)+'" selected>'+esc(selNome)+(selCode?' ('+esc(selCode)+')':'')+' — informado</option>';
+  return html;
+}
+function rsModSubstitutoOptions(modSubstituido, selected){
+  var opts = RS_REGRAS[modSubstituido] || [];
+  if(!opts.length) return '<option value="">Escolha antes a modalidade do substituído</option>';
+  return '<option value="">Selecione...</option>'+opts.map(function(o){ return '<option value="'+o+'" '+(o===selected?'selected':'')+'>'+o+'</option>'; }).join('');
+}
+function rsChInput(id, value){
+  return '<input type="text" inputmode="numeric" id="'+id+'" list="rs-ch-list" placeholder="Ex.: 20" value="'+esc(value||'')+'">';
+}
+function openRedaSubstModal(id){
+  var e = id ? REDA_SUBST_LIST.find(function(x){ return x.id===id; }) : null;
+  e = e || {};
+  var temNova = rsIsRealocado(e);
+  var munKey = rsMunicipioKey(e.municipio);
+  var novoMunKey = rsMunicipioKey(e.novoMunicipio);
+  byId('modal-root').innerHTML =
+    '<div class="modal-overlay" data-action="close-modal-bg"><div class="modal" data-action="stop-prop">'+
+    '<div class="modal-header"><div class="modal-header-text"><h2>'+(e.id?'Editar REDA substituído':'Registrar REDA substituído')+'</h2>'+
+    '<div class="sub">Emergencial: substituível por Efetivo ou REDA Seletivo &middot; Seletivo: somente por Efetivo</div></div>'+
+    '<button class="icon-btn modal-close" data-action="close-modal" aria-label="Fechar">&#10005;</button></div>'+
+    '<div class="modal-body"><datalist id="rs-ch-list">'+RS_CH_SUGESTOES.map(function(c){ return '<option value="'+c+'">'; }).join('')+'</datalist>'+
+    '<div id="rs-se-alert"></div>'+
+    '<div class="section-title">REDA substituído</div><div class="field-grid">'+
+      '<div class="field"><label>Matrícula <span class="req">*</span></label><input type="text" id="rs-sdo-mat" data-action="rs-lookup" data-who="sdo" placeholder="Digite e saia do campo para buscar na base" value="'+esc(e.substituidoMatricula||'')+'"></div>'+
+      '<div class="field"><label>Nome <span class="req">*</span></label><input type="text" id="rs-sdo-nome" value="'+esc(e.substituidoNome||'')+'"></div>'+
+      '<div class="field"><label>Modalidade <span class="req">*</span></label><select id="rs-sdo-mod" data-action="rs-mod-change"><option value="">Selecione...</option>'+
+        RS_MOD_SUBSTITUIDO.map(function(o){ return '<option value="'+o+'" '+(o===e.substituidoModalidade?'selected':'')+'>'+o+'</option>'; }).join('')+'</select></div>'+
+      '<div class="field"><label>CH <span class="req">*</span></label>'+rsChInput('rs-sdo-ch', e.substituidoCh)+'</div>'+
+      '<div class="field"><label>Município <span class="req">*</span></label><select id="rs-mun" data-action="rs-mun-change" data-target="rs-uee">'+rsMunicipioOptions(munKey)+'</select></div>'+
+      '<div class="field"><label>UEE <span class="req">*</span></label><select id="rs-uee">'+rsUeeOptions(munKey, e.ueeCodigo, e.uee)+'</select></div>'+
+    '</div>'+
+    '<div class="section-title">Substituto</div><div class="field-grid">'+
+      '<div class="field"><label>Matrícula <span class="req">*</span></label><input type="text" id="rs-sto-mat" data-action="rs-lookup" data-who="sto" placeholder="Digite e saia do campo para buscar na base" value="'+esc(e.substitutoMatricula||'')+'"></div>'+
+      '<div class="field"><label>Nome <span class="req">*</span></label><input type="text" id="rs-sto-nome" value="'+esc(e.substitutoNome||'')+'"></div>'+
+      '<div class="field"><label>Modalidade <span class="req">*</span></label><select id="rs-sto-mod">'+rsModSubstitutoOptions(e.substituidoModalidade, e.substitutoModalidade)+'</select></div>'+
+      '<div class="field"><label>CH <span class="req">*</span></label>'+rsChInput('rs-sto-ch', e.substitutoCh)+'</div>'+
+      '<div class="field"><label>Data da substituição</label><input type="date" id="rs-data" value="'+esc(e.dataSubstituicao||'')+'"></div>'+
+    '</div>'+
+    '<div class="section-title">Nova Unidade Escolar do REDA substituído</div>'+
+    '<label class="check-inline" style="margin-bottom:8px;display:flex;gap:8px;align-items:center"><input type="checkbox" id="rs-tem-nova" data-action="rs-toggle-nova" '+(temNova?'checked':'')+'> Já foi conseguida uma nova Unidade Escolar para este REDA</label>'+
+    '<div id="rs-nova-box" style="'+(temNova?'':'display:none')+'"><div class="field-grid">'+
+      '<div class="field"><label>Município <span class="req">*</span></label><select id="rs-novo-mun" data-action="rs-mun-change" data-target="rs-nova-uee">'+rsMunicipioOptions(novoMunKey)+'</select></div>'+
+      '<div class="field"><label>Unidade Escolar <span class="req">*</span></label><select id="rs-nova-uee">'+rsUeeOptions(novoMunKey, e.novaUeeCodigo, e.novaUee)+'</select></div>'+
+      '<div class="field"><label>Disciplina</label><input type="text" id="rs-nova-disc" value="'+esc(e.novaDisciplina||'')+'"></div>'+
+      '<div class="field"><label>CH</label>'+rsChInput('rs-nova-ch', e.novaCh)+'</div>'+
+      '<div class="field"><label>Data da nova lotação</label><input type="date" id="rs-nova-data" value="'+esc(e.novaData||'')+'"></div>'+
+    '</div></div>'+
+    '<div class="section-title">Observações</div>'+
+    '<div class="field"><label>Uso interno <span style="font-weight:400;color:var(--text-muted);font-size:11.5px">(não aparece na lista nem no relatório impresso)</span></label><textarea id="rs-obs" rows="3">'+esc(e.observacoes||'')+'</textarea></div>'+
+    (e.id && e.historico && e.historico.length ? '<div class="section-title">Histórico</div><div style="font-size:12.5px;color:var(--text-secondary)">'+
+      e.historico.slice().reverse().map(function(h){ return '<div>'+fmtDate(h.data)+' — '+esc(h.texto)+'</div>'; }).join('')+'</div>' : '')+
+    '</div>'+
+    '<div class="modal-footer"><button class="btn" data-action="close-modal">Cancelar</button>'+
+    '<button class="btn btn-primary" data-action="rs-save" data-id="'+esc(e.id||'')+'">'+(e.id?'Salvar alterações':'Registrar')+'</button></div>'+
+    '</div></div>';
+  rsUpdateSeAlert();
+  setTimeout(function(){ var f=byId('rs-sdo-mat'); if(f && !e.id) f.focus(); }, 30);
+}
+function rsUpdateSeAlert(){
+  var box = byId('rs-se-alert'); if(!box) return;
+  var mat = (byId('rs-sdo-mat')||{}).value;
+  box.innerHTML = isSituacaoEspecial(mat)
+    ? '<div class="alert alert-warning" style="border-color:var(--danger-500)"><span class="ic">&#128683;</span><div>Esta matrícula está em <b>Situação Especial</b>: nenhuma movimentação ou substituição pode ser registrada para ela.</div></div>'
+    : '';
+}
+function rsLookup(who){
+  var mat = String((byId('rs-'+who+'-mat')||{}).value||'').trim();
+  if(who==='sdo') rsUpdateSeAlert();
+  if(!mat) return;
+  var r = RECORDS.find(function(x){ return String(x.cadastro).trim()===mat || String(x.cadastroSap||'').trim()===mat; });
+  if(!r){ toast('Matrícula '+mat+' não consta na base do SAGP — preencha os dados manualmente.'); return; }
+  var nome = byId('rs-'+who+'-nome'); if(nome && !nome.value) nome.value = r.nome||'';
+  var ch = byId('rs-'+who+'-ch'); if(ch && !ch.value && r.regime) ch.value = r.regime;
+  if(who==='sto'){
+    var mod = byId('rs-sto-mod');
+    if(mod && !mod.value && String(r.tipoServidor||'').toUpperCase().indexOf('ESTATUT')===0){
+      if([].some.call(mod.options, function(o){ return o.value==='Efetivo'; })) mod.value = 'Efetivo';
+    }
+  }
+  if(who==='sdo'){
+    var munSel = byId('rs-mun'), k = rsMunicipioKey(r.municipio);
+    if(munSel && !munSel.value && k){
+      munSel.value = k;
+      byId('rs-uee').innerHTML = rsUeeOptions(k, r.codsecul, r.orgao);
+    }
+  }
+  toast('Dados de '+(r.nome||mat)+' trazidos da base.');
+}
+function rsSelVal(id){
+  var s = byId(id); if(!s || !s.value) return {cod:'', nome:''};
+  var o = s.options[s.selectedIndex];
+  return {cod: s.value, nome: (o && o.dataset.nome) || ''};
+}
+function saveRedaSubst(id){
+  if(!firebaseReady || !db){ toast('Isso exige conexão com o Firebase.', true); return; }
+  var v = function(i){ var el=byId(i); return el ? String(el.value||'').trim() : ''; };
+  var d = {
+    substituidoMatricula: v('rs-sdo-mat'), substituidoNome: v('rs-sdo-nome').toUpperCase(), substituidoModalidade: v('rs-sdo-mod'), substituidoCh: v('rs-sdo-ch'),
+    municipio: v('rs-mun'), substitutoMatricula: v('rs-sto-mat'), substitutoNome: v('rs-sto-nome').toUpperCase(),
+    substitutoModalidade: v('rs-sto-mod'), substitutoCh: v('rs-sto-ch'), dataSubstituicao: v('rs-data'), observacoes: v('rs-obs')
+  };
+  var uee = rsSelVal('rs-uee'); d.uee = uee.nome; d.ueeCodigo = uee.cod;
+  d.nteNum = d.municipio && rsBuildMunicipios()[d.municipio] ? rsBuildMunicipios()[d.municipio].nte : '';
+  var faltam = [];
+  if(!d.substituidoMatricula) faltam.push('matrícula do substituído');
+  if(!d.substituidoNome) faltam.push('nome do substituído');
+  if(!d.substituidoModalidade) faltam.push('modalidade do substituído');
+  if(!d.substituidoCh) faltam.push('CH do substituído');
+  if(!d.municipio) faltam.push('município');
+  if(!d.uee) faltam.push('UEE');
+  if(!d.substitutoMatricula) faltam.push('matrícula do substituto');
+  if(!d.substitutoNome) faltam.push('nome do substituto');
+  if(!d.substitutoModalidade) faltam.push('modalidade do substituto');
+  if(!d.substitutoCh) faltam.push('CH do substituto');
+  var temNova = byId('rs-tem-nova') && byId('rs-tem-nova').checked;
+  if(temNova){
+    var nu = rsSelVal('rs-nova-uee');
+    d.novoMunicipio = v('rs-novo-mun'); d.novaUee = nu.nome; d.novaUeeCodigo = nu.cod;
+    d.novaDisciplina = v('rs-nova-disc'); d.novaCh = v('rs-nova-ch'); d.novaData = v('rs-nova-data');
+    d.novoNteNum = d.novoMunicipio && rsBuildMunicipios()[d.novoMunicipio] ? rsBuildMunicipios()[d.novoMunicipio].nte : '';
+    if(!d.novoMunicipio) faltam.push('município da nova UEE');
+    if(!d.novaUee) faltam.push('nova Unidade Escolar');
+  } else {
+    d.novoMunicipio=''; d.novaUee=''; d.novaUeeCodigo=''; d.novaDisciplina=''; d.novaCh=''; d.novaData=''; d.novoNteNum='';
+  }
+  if(faltam.length){ toast('Preencha: '+faltam.join(', ')+'.', true); return; }
+  if(['substituidoCh','substitutoCh','novaCh'].some(function(k){ return d[k] && !/^\d+$/.test(d[k]); })){ toast('CH deve conter apenas números.', true); return; }
+  if((RS_REGRAS[d.substituidoModalidade]||[]).indexOf(d.substitutoModalidade)===-1){
+    toast('Substituição não permitida: '+d.substituidoModalidade+' só pode ser substituído por '+(RS_REGRAS[d.substituidoModalidade]||[]).join(' ou ')+'.', true); return;
+  }
+  if(d.substituidoMatricula===d.substitutoMatricula){ toast('Substituído e substituto não podem ter a mesma matrícula.', true); return; }
+  if(isSituacaoEspecial(d.substituidoMatricula)){ toast('Matrícula '+d.substituidoMatricula+' está em Situação Especial — substituição bloqueada.', true); return; }
+  var prev = id ? REDA_SUBST_LIST.find(function(x){ return x.id===id; }) : null;
+  if(!prev){
+    var dup = REDA_SUBST_LIST.find(function(x){ return x.substituidoMatricula===d.substituidoMatricula && x.ueeCodigo===d.ueeCodigo; });
+    if(dup && !confirm('Já existe registro de substituição para a matrícula '+d.substituidoMatricula+' nesta UEE. Registrar mesmo assim?')) return;
+  }
+  var hist = (prev && prev.historico) ? prev.historico.slice() : [];
+  var quem = UI.currentUserName ? ' ('+UI.currentUserName+')' : '';
+  if(!prev) hist.push({data: todayIso(), texto: 'Substituição registrada'+quem+'.'});
+  else {
+    if(!rsIsRealocado(prev) && temNova) hist.push({data: todayIso(), texto: 'Nova Unidade Escolar informada: '+d.novaUee+quem+'.'});
+    else if(rsIsRealocado(prev) && !temNova) hist.push({data: todayIso(), texto: 'Nova Unidade Escolar removida'+quem+'.'});
+    else hist.push({data: todayIso(), texto: 'Dados atualizados'+quem+'.'});
+  }
+  d.historico = hist;
+  d.createdAt = prev && prev.createdAt ? prev.createdAt : todayIso();
+  d.updatedAt = todayIso();
+  var ref = id ? db.collection(REDA_SUBST_COLLECTION).doc(id) : db.collection(REDA_SUBST_COLLECTION).doc();
+  ref.set(d).then(function(){
+    UI.rsPermError = false;
+    toast(prev ? 'Registro de '+d.substituidoNome+' atualizado.' : 'Substituição de '+d.substituidoNome+' registrada.');
+    closeModal();
+  }).catch(function(err){
+    console.error(err);
+    if(err && err.code==='permission-denied') toast('As regras do Firestore ainda não liberam a coleção "sagp_reda_substituido".', true);
+    else toast('Erro ao salvar. Verifique a internet.', true);
+  });
+}
+function removeRedaSubst(id){
+  var e = REDA_SUBST_LIST.find(function(x){ return x.id===id; }); if(!e) return;
+  if(!confirm('Excluir o registro de substituição de '+e.substituidoNome+'? Esta ação não pode ser desfeita.')) return;
+  db.collection(REDA_SUBST_COLLECTION).doc(id).delete().then(function(){ toast('Registro excluído.'); })
+    .catch(function(err){ console.error(err); toast('Erro ao excluir. Verifique a internet.', true); });
+}
+function exportRedaSubstExcel(){
+  if(typeof XLSX==='undefined'){ toast('Biblioteca de exportação indisponível (sem conexão).', true); return; }
+  var rows = rsFiltered().map(function(e){
+    return {
+      'Matrícula substituído': e.substituidoMatricula, 'Nome substituído': e.substituidoNome, 'Modalidade substituído': e.substituidoModalidade,
+      'CH substituído': e.substituidoCh ? Number(e.substituidoCh) : '', 'NTE': e.nteNum ? 'NTE '+e.nteNum : '', 'Município': e.municipio,
+      'Código UEE': e.ueeCodigo, 'UEE': e.uee,
+      'Matrícula substituto': e.substitutoMatricula, 'Nome substituto': e.substitutoNome, 'Modalidade substituto': e.substitutoModalidade,
+      'CH substituto': e.substitutoCh ? Number(e.substitutoCh) : '', 'Data da substituição': e.dataSubstituicao ? fmtDate(e.dataSubstituicao) : '',
+      'Situação': rsIsRealocado(e) ? 'Com nova UEE' : 'Aguardando nova UEE',
+      'Nova UEE - Município': e.novoMunicipio||'', 'Nova UEE - Código': e.novaUeeCodigo||'', 'Nova UEE': e.novaUee||'',
+      'Nova UEE - Disciplina': e.novaDisciplina||'', 'Nova UEE - CH': e.novaCh ? Number(e.novaCh) : '', 'Nova UEE - Data': e.novaData ? fmtDate(e.novaData) : ''
+    };
+  });
+  var ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = Object.keys(rows[0]||{}).map(function(k){ return {wch: Math.max(12, Math.min(48, k.length+4))}; });
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'REDA Substituído');
+  XLSX.writeFile(wb, 'SAGP_reda_substituido_'+todayIso()+'.xlsx');
 }
 function addTecnicoExtra(nome, senha){
   if(senha !== ADMIN_ACTION_PASSWORD){ toast('Senha incorreta.', true); return; }
@@ -1208,6 +1545,7 @@ var VIEW_TITLES = {
   profissionais: ['Profissionais','Base completa com filtros e ficha individual'],
   substituicoes: ['Substituições','Casos marcados com "Haverá substituição?" e os dados do substituto informado'],
   arquivados: ['Arquivados','Registros arquivados — não aparecem em Profissionais, Dashboard ou Relatórios, e não podem ser apagados'],
+  redaSubstituido: ['REDA Substituído','REDA Emergencial ou Seletivo substituídos por Efetivo ou REDA Seletivo, e a nova Unidade Escolar obtida'],
   situacaoEspecialModulo: ['Situação Especial','Pessoas protegidas contra qualquer movimentação — aparecem sinalizadas em todo o sistema'],
   relatorios: ['Relatórios','Relatórios detalhados por filtro, exportáveis e prontos para impressão'],
   importar: ['Configurações','Importe dados por matrícula, exporte para Excel e faça backup da base']
@@ -1229,6 +1567,8 @@ function render(){
   var arqCount = RECORDS.filter(function(r){ return r.arquivado; }).length;
   var arqBadge = byId('nav-count-arquivados');
   if(arqBadge) arqBadge.textContent = arqCount>0 ? arqCount : '';
+  var rsBadge = byId('nav-count-reda-substituido');
+  if(rsBadge) rsBadge.textContent = REDA_SUBST_LIST.length>0 ? REDA_SUBST_LIST.length : '';
   var seBadge = byId('nav-count-situacao-especial');
   if(seBadge) seBadge.textContent = SITUACAO_ESPECIAL_LIST.length>0 ? SITUACAO_ESPECIAL_LIST.length : '';
   var el = byId('view-scroll');
@@ -1241,6 +1581,7 @@ function render(){
   else if(UI.view==='substituicoes') el.innerHTML = renderSubstituicoes();
   else if(UI.view==='arquivados') el.innerHTML = renderArquivados();
   else if(UI.view==='situacaoEspecialModulo') el.innerHTML = renderSituacaoEspecialModulo();
+  else if(UI.view==='redaSubstituido') el.innerHTML = renderRedaSubstituido();
   else if(UI.view==='relatorios') el.innerHTML = renderRelatorios();
   else if(UI.view==='importar') el.innerHTML = renderImportar();
   el.querySelectorAll('input[data-indet="1"]').forEach(function(i){ i.indeterminate = true; });
@@ -2938,7 +3279,7 @@ function wireGlobalEvents(){
   byId('global-search').addEventListener('input', debounce(function(e){
     UI.filters.search = e.target.value;
     UI.page = 1;
-    if(UI.view==='profissionais') render();
+    if(UI.view==='profissionais' || UI.view==='redaSubstituido') render();
   }, 220));
 
   document.addEventListener('click', handleDelegatedClick);
@@ -3041,6 +3382,13 @@ function handleDelegatedClick(e){
   else if(action==='save-novo') saveNovoRegistro();
   else if(action==='open-situacao-especial-modal') openSituacaoEspecialModal();
   else if(action==='print-situacao-especial') printReport();
+  else if(action==='rs-filter'){ if(e && e.preventDefault) e.preventDefault(); var k=el.dataset.key; UI.rsFilter = (UI.rsFilter===k && k!=='todos') ? 'todos' : k; UI.needsScrollReset=true; render(); }
+  else if(action==='rs-open-modal') openRedaSubstModal();
+  else if(action==='rs-edit'){ if(el.dataset.id) openRedaSubstModal(el.dataset.id); }
+  else if(action==='rs-save') saveRedaSubst(el.dataset.id);
+  else if(action==='rs-remove'){ if(el.dataset.id) removeRedaSubst(el.dataset.id); }
+  else if(action==='rs-export') exportRedaSubstExcel();
+  else if(action==='rs-print') printReport();
   else if(action==='edit-situacao-especial'){ if(el.dataset.cadastro) openSituacaoEspecialModal(el.dataset.cadastro); }
   else if(action==='save-situacao-especial') saveSituacaoEspecialModal(el.dataset.cadastroOriginal);
   else if(action==='remove-situacao-especial'){ if(el.dataset.cadastro) removeSituacaoEspecial(el.dataset.cadastro); }
@@ -3069,6 +3417,10 @@ function handleDelegatedChange(e){
   var el = e.target.closest && e.target.closest('[data-action]');
   if(el){
     var action = el.dataset.action;
+    if(action==='rs-mod-change'){ var sm=byId('rs-sto-mod'); if(sm) sm.innerHTML = rsModSubstitutoOptions(el.value, sm.value); return; }
+    if(action==='rs-mun-change'){ var tg=byId(el.dataset.target); if(tg) tg.innerHTML = rsUeeOptions(el.value); return; }
+    if(action==='rs-lookup'){ rsLookup(el.dataset.who); return; }
+    if(action==='rs-toggle-nova'){ var nb=byId('rs-nova-box'); if(nb) nb.style.display = el.checked ? '' : 'none'; return; }
     if(action==='msel-all'){
       var fa = el.dataset.field;
       var qa = (UI.mselSearch && UI.mselSearch[fa]) || '';
